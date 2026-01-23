@@ -128,4 +128,13 @@ a {
   border: 1px solid #a7f3d0;
 }
 
+/* ============================================================================
+   ESTILOS DE LEAFLET (Mapa)
+   ============================================================================ */
+
+/* Asegurar que los estilos de Leaflet se carguen correctamente */
+.leaflet-container {
+  font-family: inherit;
+}
+
 

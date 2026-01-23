@@ -3,186 +3,93 @@
  * PÁGINA DE DASHBOARD (PROTEGIDA) - app/dashboard/page.js
  * ============================================================================
  * 
- * Esta es la página principal del dashboard. REQUIERE AUTENTICACIÓN.
+ * Dashboard principal con visualizaciones de indicadores epidemiológicos.
+ * REQUIERE AUTENTICACIÓN.
  * 
  * FUNCIONALIDADES:
- * 1. Verifica que el usuario esté autenticado antes de mostrar contenido
- * 2. Si no está autenticado, redirige automáticamente a /login
- * 3. Muestra información del usuario autenticado
- * 4. Permite cerrar sesión
- * 5. Escucha cambios en el estado de autenticación (si el usuario cierra sesión en otra pestaña)
- * 
- * PROTECCIÓN:
- * - Esta página está protegida: solo usuarios autenticados pueden verla
- * - La verificación se hace en el cliente (navegador) usando Supabase Auth
- * - Si no hay sesión, se redirige inmediatamente a /login
- * 
- * PRÓXIMAS ETAPAS:
- * - Aquí se implementarán los KPIs epidemiológicos
- * - Gráficos y visualizaciones de datos
- * - Mapas interactivos de la Región de Coquimbo
- * - Filtros y búsquedas avanzadas
+ * 1. Verifica autenticación (redirige a /login si no hay sesión)
+ * 2. Muestra KPIs en tarjetas (consumiendo RPC get_kpi_summary)
+ * 3. Gráfico de tendencia temporal con 2 series (Exámenes y Notificaciones)
+ * 4. Gráfico de distribución por comuna (datos reales)
+ * 5. Mapa interactivo de la Región de Coquimbo (puntos reales con categorías)
+ * 6. Filtros para ajustar períodos y límites
+ * 7. Permite cerrar sesión
  */
 
-// 'use client' es necesario porque usamos hooks de React y Supabase Auth
 'use client'
 
-// Importar hooks de React para manejar estado y efectos
-import { useState, useEffect } from 'react'
-
-// Importar router de Next.js para navegar entre páginas
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-// Importar función para crear cliente Supabase
 import { createSupabaseClient } from '@/lib/supabase'
+import { useSession } from '@/src/hooks/useSession'
+import { useKpiSummary } from '@/src/hooks/useKpiSummary'
+import { useExamsByMonth } from '@/src/hooks/useExamsByMonth'
+import { useNotificationsByMonth } from '@/src/hooks/useNotificationsByMonth'
+import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
+import { useMapPoints } from '@/src/hooks/useMapPoints'
+import KpiCard from '@/src/components/KpiCard'
+import TendencyChart from '@/src/components/Charts/TendencyChart'
+import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
+import dynamic from 'next/dynamic'
+
+// Importar mapa dinámicamente (Leaflet requiere cliente)
+// Usar la versión Client que maneja mejor la importación
+const CoquimboMap = dynamic(
+  () => import('@/src/components/Map/CoquimboMapClient'),
+  { 
+    ssr: false,
+    loading: () => (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '500px',
+        background: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: '1rem',
+        color: 'rgba(255, 255, 255, 0.5)'
+      }}>
+        Cargando mapa...
+      </div>
+    )
+  }
+)
 
 /**
  * Componente principal del Dashboard
  */
 export default function DashboardPage() {
-  // ============================================================================
-  // HOOKS Y ESTADO
-  // ============================================================================
-  
-  // Router para navegar entre páginas (usado para redirigir a /login si no hay sesión)
   const router = useRouter()
+  const { user, loading: sessionLoading, error: sessionError } = useSession()
   
-  // Estado para almacenar los datos del usuario autenticado
-  // null = no hay usuario, { email, id, ... } = datos del usuario
-  const [user, setUser] = useState(null)
-  
-  // Estado para saber si estamos cargando/verificando la autenticación
-  // true = estamos verificando, false = ya verificamos
-  const [loading, setLoading] = useState(true)
-  
-  // Estado para almacenar mensajes de error
-  // null = no hay error, string = mensaje de error
-  const [error, setError] = useState(null)
+  // Estados para filtros
+  const [monthsFilter, setMonthsFilter] = useState(12)
+  const [comunaLimitFilter, setComunaLimitFilter] = useState(10)
+  const [mapLimitFilter, setMapLimitFilter] = useState(1000)
 
-  // ============================================================================
-  // EFECTO: VERIFICAR AUTENTICACIÓN AL CARGAR LA PÁGINA
-  // ============================================================================
-  
-  // useEffect se ejecuta cuando el componente se monta (cuando se carga la página)
-  useEffect(() => {
-    /**
-     * Función asíncrona para verificar la autenticación del usuario
-     * 
-     * Esta función:
-     * 1. Obtiene la sesión actual del usuario
-     * 2. Si no hay sesión, redirige a /login
-     * 3. Si hay sesión, guarda los datos del usuario
-     * 4. Configura un listener para detectar cambios en el estado de autenticación
-     */
-    const checkAuth = async () => {
-      try {
-        // Crear cliente Supabase
-        const supabase = createSupabaseClient()
-        
-        // Obtener la sesión actual del usuario
-        // getSession() busca en localStorage/cookies si hay una sesión guardada
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        
-        // Si hay un error al obtener la sesión (muy raro, pero puede pasar)
-        if (sessionError) {
-          setError('Error al verificar la sesión')
-          setLoading(false)  // Dejar de mostrar el estado de carga
-          return  // Salir de la función
-        }
-
-        // Si NO hay sesión (usuario no autenticado)
-        if (!session) {
-          // Redirigir inmediatamente a la página de login
-          router.push('/login')
-          return  // Salir de la función (no continuar)
-        }
-
-        // Si llegamos aquí, hay una sesión válida
-        // Guardar los datos del usuario en el estado
-        // session.user contiene: { id, email, created_at, ... }
-        setUser(session.user)
-        
-        // Dejar de mostrar el estado de carga (ya verificamos)
-        setLoading(false)
-
-        // ========================================================================
-        // CONFIGURAR LISTENER DE CAMBIOS DE AUTENTICACIÓN
-        // ========================================================================
-        
-        // onAuthStateChange() escucha cambios en el estado de autenticación
-        // Se ejecuta cuando:
-        // - El usuario inicia sesión
-        // - El usuario cierra sesión
-        // - El token se refresca
-        // - El usuario cierra sesión en otra pestaña del navegador
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-          // Si la sesión se perdió (usuario cerró sesión)
-          if (!session) {
-            // Redirigir a login
-            router.push('/login')
-          } else {
-            // Si hay una nueva sesión (usuario inició sesión o token se refrescó)
-            // Actualizar los datos del usuario
-            setUser(session.user)
-          }
-        })
-
-        // ========================================================================
-        // LIMPIEZA: DESUSCRIBIRSE AL DESMONTAR EL COMPONENTE
-        // ========================================================================
-        
-        // Es importante limpiar la suscripción cuando el componente se desmonta
-        // Esto evita memory leaks (fugas de memoria)
-        // El return en useEffect se ejecuta cuando el componente se desmonta
-        return () => {
-          subscription.unsubscribe()  // Dejar de escuchar cambios
-        }
-      } catch (err) {
-        // Capturar cualquier error inesperado
-        setError('Error inesperado al cargar el dashboard')
-        setLoading(false)
-      }
-    }
-
-    // Ejecutar la verificación
-    checkAuth()
-  }, [router])  // Se ejecuta cuando el componente se monta o cuando router cambia
+  // Hooks para obtener datos
+  const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
+  const { data: examsData, loading: examsLoading, error: examsError } = useExamsByMonth(monthsFilter)
+  const { data: notificationsData, loading: notificationsLoading, error: notificationsError } = useNotificationsByMonth(monthsFilter)
+  const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
+  const { data: mapPoints, loading: mapLoading, error: mapError } = useMapPoints(mapLimitFilter)
 
   // ============================================================================
   // FUNCIÓN: MANEJAR EL CIERRE DE SESIÓN
   // ============================================================================
   
-  /**
-   * Esta función se ejecuta cuando el usuario hace clic en "Cerrar Sesión"
-   * 
-   * ¿Qué hace?
-   * 1. Llama a signOut() de Supabase para eliminar la sesión
-   * 2. Elimina la sesión del navegador (localStorage/cookies)
-   * 3. Redirige al usuario a la página de login
-   */
   const handleLogout = async () => {
     try {
-      // Crear cliente Supabase
       const supabase = createSupabaseClient()
-      
-      // Cerrar sesión del usuario
-      // signOut() elimina la sesión del navegador y del servidor
       const { error } = await supabase.auth.signOut()
       
-      // Si hay un error al cerrar sesión
       if (error) {
-        setError('Error al cerrar sesión')
+        console.error('Error al cerrar sesión:', error)
       } else {
-        // Si el cierre de sesión fue exitoso
-        // Redirigir al usuario a la página de login
         router.push('/login')
-        
-        // Refrescar el router para asegurar que los cambios se apliquen
         router.refresh()
       }
     } catch (err) {
-      // Capturar cualquier error inesperado
-      setError('Error inesperado al cerrar sesión')
+      console.error('Error inesperado al cerrar sesión:', err)
     }
   }
 
@@ -190,9 +97,7 @@ export default function DashboardPage() {
   // RENDERIZADO CONDICIONAL: ESTADO DE CARGA
   // ============================================================================
   
-  // Si todavía estamos verificando la autenticación, mostrar un mensaje de carga
-  // Esto evita que la página parpadee o muestre contenido antes de verificar
-  if (loading) {
+  if (sessionLoading) {
     return (
       <div style={{
         display: 'flex',
@@ -210,9 +115,7 @@ export default function DashboardPage() {
   // RENDERIZADO CONDICIONAL: ESTADO DE ERROR (SIN USUARIO)
   // ============================================================================
   
-  // Si hay un error y no hay usuario (no se pudo autenticar)
-  // Mostrar un mensaje de error con opción de ir a login
-  if (error && !user) {
+  if (sessionError && !user) {
     return (
       <div style={{
         display: 'flex',
@@ -228,7 +131,7 @@ export default function DashboardPage() {
           maxWidth: '500px',
           textAlign: 'center'
         }}>
-          <p style={{ color: '#dc2626', marginBottom: '1rem' }}>{error}</p>
+          <p style={{ color: '#dc2626', marginBottom: '1rem' }}>{sessionError}</p>
           <button
             onClick={() => router.push('/login')}
             style={{
@@ -251,25 +154,23 @@ export default function DashboardPage() {
   // RENDERIZADO: CONTENIDO PRINCIPAL DEL DASHBOARD
   // ============================================================================
   
-  // Si llegamos aquí, el usuario está autenticado y podemos mostrar el dashboard
   return (
     <div style={{
-      minHeight: '100vh',        // Altura mínima: pantalla completa
-      padding: '2rem',           // Espaciado interno
-      color: 'white'             // Texto blanco (fondo es degradado morado)
+      minHeight: '100vh',
+      padding: '2rem',
+      color: 'white'
     }}>
       {/* ========================================================================
           HEADER: Encabezado con título y botón de logout
           ======================================================================== */}
       <header style={{
         display: 'flex',
-        justifyContent: 'space-between',  // Título a la izquierda, usuario/logout a la derecha
+        justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: '2rem',
         paddingBottom: '1rem',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.2)'  // Línea divisoria sutil
+        borderBottom: '1px solid rgba(255, 255, 255, 0.2)'
       }}>
-        {/* Título y subtítulo del dashboard */}
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
             Dashboard Chagas
@@ -279,21 +180,17 @@ export default function DashboardPage() {
           </p>
         </div>
         
-        {/* Información del usuario y botón de logout */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* Mostrar email del usuario autenticado */}
           <div style={{ textAlign: 'right' }}>
             <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>Usuario:</p>
-            {/* user?.email usa optional chaining: si user es null, no intenta acceder a email */}
             <p style={{ fontWeight: '500' }}>{user?.email || 'N/A'}</p>
           </div>
           
-          {/* Botón para cerrar sesión */}
           <button
-            onClick={handleLogout}  // Ejecutar handleLogout cuando se hace clic
+            onClick={handleLogout}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.2)',  // Fondo semi-transparente
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
               color: 'white',
               border: '1px solid rgba(255, 255, 255, 0.3)',
               borderRadius: '0.5rem',
@@ -301,7 +198,6 @@ export default function DashboardPage() {
               fontSize: '0.875rem',
               transition: 'background-color 0.2s'
             }}
-            // Efecto hover: hacer el botón más visible al pasar el mouse
             onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
             onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           >
@@ -314,53 +210,294 @@ export default function DashboardPage() {
           MAIN: Contenido principal del dashboard
           ======================================================================== */}
       <main>
-        {/* Tarjeta con información del proyecto */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.1)',      // Fondo semi-transparente
-          backdropFilter: 'blur(10px)',                 // Efecto de desenfoque (glassmorphism)
-          borderRadius: '1rem',
-          padding: '2rem',
-          border: '1px solid rgba(255, 255, 255, 0.2)'
-        }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
-            Bienvenido al Dashboard
-          </h2>
-          <p style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
-            Esta es la primera etapa del proyecto. La autenticación está funcionando correctamente.
-          </p>
-          <p style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
-            En las siguientes etapas se implementarán:
-          </p>
-          {/* Lista de funcionalidades futuras */}
-          <ul style={{ 
-            listStyle: 'none',      // Sin viñetas
-            paddingLeft: '0',
-            lineHeight: '2'
-          }}>
-            <li>• Visualización de KPIs epidemiológicos</li>
-            <li>• Gráficos y estadísticas</li>
-            <li>• Mapas interactivos de la Región de Coquimbo</li>
-            <li>• Filtros y búsquedas avanzadas</li>
-          </ul>
-        </div>
-
-        {/* Mostrar error si hay uno (pero el usuario está autenticado) */}
-        {/* Esto puede pasar si hay un error al cerrar sesión, por ejemplo */}
-        {error && user && (
-          <div style={{
-            marginTop: '1rem',
-            padding: '1rem',
-            backgroundColor: 'rgba(239, 68, 68, 0.2)',  // Fondo rojo semi-transparente
-            border: '1px solid rgba(239, 68, 68, 0.5)',
-            borderRadius: '0.5rem',
+        {/* Sección de KPIs */}
+        <section style={{ marginBottom: '2rem' }}>
+          <h2 style={{
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            marginBottom: '1.5rem',
             color: 'white'
           }}>
-            {error}
+            Indicadores Principales
+          </h2>
+          
+          {kpiError && (
+            <div style={{
+              padding: '1rem',
+              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              borderRadius: '0.5rem',
+              color: 'white',
+              marginBottom: '1rem'
+            }}>
+              Error al cargar KPIs: {kpiError}
+            </div>
+          )}
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap: '1.5rem'
+          }}>
+            <KpiCard
+              title="Total Personas"
+              value={kpiData?.total_personas || 0}
+              icon="👥"
+              color="#667eea"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Total Exámenes"
+              value={kpiData?.total_examenes || 0}
+              icon="🔬"
+              color="#10b981"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Bajo Control"
+              value={kpiData?.total_bajo_control || 0}
+              icon="✅"
+              color="#3b82f6"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Casos Agudos"
+              value={kpiData?.total_agudo || 0}
+              icon="⚠️"
+              color="#f59e0b"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Gestantes"
+              value={kpiData?.total_gestantes || 0}
+              icon="🤰"
+              color="#ec4899"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Inasistentes"
+              value={kpiData?.total_inasistentes || 0}
+              icon="📅"
+              color="#ef4444"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="Tratamientos"
+              value={kpiData?.total_tratamientos || 0}
+              icon="💊"
+              color="#8b5cf6"
+              loading={kpiLoading}
+            />
           </div>
-        )}
+        </section>
+
+        {/* Sección de Gráficos */}
+        <section style={{ marginBottom: '2rem' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem'
+          }}>
+            <h2 style={{
+              fontSize: '1.5rem',
+              fontWeight: 'bold',
+              color: 'white'
+            }}>
+              Análisis Temporal y Geográfico
+            </h2>
+            
+            {/* Filtro de meses para gráficos */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <label style={{
+                fontSize: '0.875rem',
+                color: 'rgba(255, 255, 255, 0.8)'
+              }}>
+                Período:
+              </label>
+              <select
+                value={monthsFilter}
+                onChange={(e) => setMonthsFilter(parseInt(e.target.value))}
+                style={{
+                  padding: '0.5rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value={6}>6 meses</option>
+                <option value={12}>12 meses</option>
+                <option value={24}>24 meses</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+            gap: '1.5rem'
+          }}>
+            {/* Gráfico de Tendencia */}
+            <div>
+              {(examsError || notificationsError) && (
+                <div style={{
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  borderRadius: '0.5rem',
+                  color: 'white',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {examsError && `Error exámenes: ${examsError}`}
+                  {notificationsError && ` Error notificaciones: ${notificationsError}`}
+                </div>
+              )}
+              <TendencyChart
+                examsData={examsData || []}
+                notificationsData={notificationsData || []}
+                title="Tendencia Temporal"
+                type="line"
+                loading={examsLoading || notificationsLoading}
+              />
+            </div>
+
+            {/* Gráfico de Distribución por Comuna */}
+            <div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ flex: 1 }} />
+                {/* Filtro de límite para comunas */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <label style={{
+                    fontSize: '0.875rem',
+                    color: 'rgba(255, 255, 255, 0.8)'
+                  }}>
+                    Top:
+                  </label>
+                  <select
+                    value={comunaLimitFilter}
+                    onChange={(e) => setComunaLimitFilter(parseInt(e.target.value))}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      color: 'white',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                  </select>
+                </div>
+              </div>
+              
+              {comunaError && (
+                <div style={{
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  borderRadius: '0.5rem',
+                  color: 'white',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  Error: {comunaError}
+                </div>
+              )}
+              <ComunaBarChart
+                data={comunaData || []}
+                title="Distribución por Comuna"
+                loading={comunaLoading}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Sección de Mapa */}
+        <section style={{ marginBottom: '2rem' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem'
+          }}>
+            <h2 style={{
+              fontSize: '1.5rem',
+              fontWeight: 'bold',
+              color: 'white'
+            }}>
+              Mapa Geográfico
+            </h2>
+            
+            {/* Filtro de límite para mapa */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <label style={{
+                fontSize: '0.875rem',
+                color: 'rgba(255, 255, 255, 0.8)'
+              }}>
+                Límite de puntos:
+              </label>
+              <select
+                value={mapLimitFilter}
+                onChange={(e) => setMapLimitFilter(parseInt(e.target.value))}
+                style={{
+                  padding: '0.5rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value={500}>500</option>
+                <option value={1000}>1000</option>
+                <option value={2000}>2000</option>
+              </select>
+            </div>
+          </div>
+
+          {mapError && (
+            <div style={{
+              padding: '1rem',
+              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              borderRadius: '0.5rem',
+              color: 'white',
+              marginBottom: '1rem'
+            }}>
+              Error al cargar mapa: {mapError}
+            </div>
+          )}
+
+          <CoquimboMap 
+            markers={mapPoints || []} 
+            loading={mapLoading}
+          />
+        </section>
       </main>
     </div>
   )
 }
-
-
