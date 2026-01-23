@@ -1,0 +1,47 @@
+{
+  /**
+   * ============================================================================
+   * CONFIGURACIÓN DE JAVASCRIPT - jsconfig.json
+   * ============================================================================
+   * 
+   * Este archivo configura el comportamiento de JavaScript en el proyecto.
+   * Es similar a tsconfig.json pero para proyectos en JavaScript puro.
+   * 
+   * FUNCIÓN PRINCIPAL:
+   * - Configura los "path aliases" (atajos para importar archivos)
+   * - Mejora el autocompletado del editor
+   * - Ayuda a Next.js a resolver las importaciones correctamente
+   */
+  
+  "compilerOptions": {
+    /**
+     * PATH ALIASES (Atajos para importar)
+     * 
+     * Permite usar @/ en lugar de rutas relativas complicadas.
+     * 
+     * Ejemplo:
+     * - Con alias: import { createSupabaseClient } from '@/lib/supabase'
+     * - Sin alias:  import { createSupabaseClient } from '../../lib/supabase'
+     * 
+     * "@/*": ["./*"] significa:
+     * - @/ apunta a la raíz del proyecto
+     * - @/lib/supabase.js → ./lib/supabase.js
+     * - @/app/page.js → ./app/page.js
+     */
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  
+  /**
+   * EXCLUIR DIRECTORIOS
+   * 
+   * node_modules se excluye porque:
+   * - Contiene miles de archivos de dependencias
+   * - No necesitamos que el editor los analice
+   * - Mejora el rendimiento del editor
+   */
+  "exclude": ["node_modules"]
+}
+
+

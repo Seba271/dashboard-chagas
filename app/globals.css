@@ -1,0 +1,131 @@
+/**
+ * ============================================================================
+ * ESTILOS GLOBALES - app/globals.css
+ * ============================================================================
+ * 
+ * Este archivo contiene los estilos CSS que se aplican a TODA la aplicación.
+ * Se importa en app/layout.js, por lo que afecta a todas las páginas.
+ * 
+ * DISEÑO:
+ * - Fondo degradado morado/azul moderno
+ * - Tipografía del sistema (rápida y nativa)
+ * - Utilidades para estados (loading, error, success)
+ */
+
+/* ============================================================================
+   RESET CSS BÁSICO
+   ============================================================================ */
+
+/* Aplicar a todos los elementos (* = selector universal) */
+* {
+  /* box-sizing: border-box hace que el padding y border se incluyan en el ancho/alto */
+  /* Sin esto, un div de 100px de ancho con 10px de padding sería 120px total */
+  box-sizing: border-box;
+  
+  /* Eliminar padding y margin por defecto del navegador */
+  /* Esto da un control total sobre el espaciado */
+  padding: 0;
+  margin: 0;
+}
+
+/* ============================================================================
+   CONFIGURACIÓN DE HTML Y BODY
+   ============================================================================ */
+
+html,
+body {
+  /* Evitar scroll horizontal (útil en móviles) */
+  max-width: 100vw;
+  overflow-x: hidden;
+  
+  /* Fuente del sistema: usa la fuente nativa del sistema operativo */
+  /* Esto hace que la app se vea nativa en cada plataforma */
+  /* -apple-system en macOS/iOS, Segoe UI en Windows, etc. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  
+  /* Suavizar el renderizado de fuentes (anti-aliasing) */
+  /* Hace que el texto se vea más nítido, especialmente en pantallas de alta resolución */
+  -webkit-font-smoothing: antialiased;  /* Para navegadores basados en WebKit (Chrome, Safari) */
+  -moz-osx-font-smoothing: grayscale;   /* Para Firefox en macOS */
+}
+
+/* ============================================================================
+   ESTILOS DEL BODY
+   ============================================================================ */
+
+body {
+  /* Fondo degradado morado/azul */
+  /* 135deg = dirección del degradado (diagonal) */
+  /* #667eea = color inicial (azul) */
+  /* #764ba2 = color final (morado) */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  
+  /* Altura mínima: 100% del viewport (pantalla completa) */
+  /* Esto asegura que el fondo cubra toda la pantalla incluso si hay poco contenido */
+  min-height: 100vh;
+}
+
+/* ============================================================================
+   ESTILOS DE ENLACES
+   ============================================================================ */
+
+a {
+  /* Heredar el color del elemento padre (en lugar del azul por defecto) */
+  color: inherit;
+  
+  /* Eliminar el subrayado por defecto de los enlaces */
+  text-decoration: none;
+}
+
+/* ============================================================================
+   CLASES UTILITARIAS PARA ESTADOS
+   ============================================================================ */
+
+/* Clase para elementos en estado de carga */
+.loading {
+  /* Reducir opacidad para indicar que está cargando */
+  opacity: 0.6;
+  
+  /* Deshabilitar interacciones (clics, etc.) mientras carga */
+  pointer-events: none;
+}
+
+/* Clase para mostrar mensajes de error */
+.error {
+  /* Color rojo para el texto */
+  color: #ef4444;
+  
+  /* Fondo rojo claro */
+  background-color: #fee2e2;
+  
+  /* Espaciado interno */
+  padding: 1rem;
+  
+  /* Bordes redondeados */
+  border-radius: 0.5rem;
+  
+  /* Borde rojo */
+  border: 1px solid #fecaca;
+}
+
+/* Clase para mostrar mensajes de éxito */
+.success {
+  /* Color verde para el texto */
+  color: #10b981;
+  
+  /* Fondo verde claro */
+  background-color: #d1fae5;
+  
+  /* Espaciado interno */
+  padding: 1rem;
+  
+  /* Bordes redondeados */
+  border-radius: 0.5rem;
+  
+  /* Borde verde */
+  border: 1px solid #a7f3d0;
+}
+
+
