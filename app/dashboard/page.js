@@ -26,16 +26,15 @@ import { useKpiSummary } from '@/src/hooks/useKpiSummary'
 import { useExamsByMonth } from '@/src/hooks/useExamsByMonth'
 import { useNotificationsByMonth } from '@/src/hooks/useNotificationsByMonth'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
-import { useMapPoints } from '@/src/hooks/useMapPoints'
+import { useGeoPoints } from '@/src/hooks/useGeoPoints'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
 import dynamic from 'next/dynamic'
 
 // Importar mapa dinámicamente (Leaflet requiere cliente)
-// Usar la versión Client que maneja mejor la importación
-const CoquimboMap = dynamic(
-  () => import('@/src/components/Map/CoquimboMapClient'),
+const SimpleMap = dynamic(
+  () => import('@/src/components/Map/SimpleMap'),
   { 
     ssr: false,
     loading: () => (
@@ -71,7 +70,7 @@ export default function DashboardPage() {
   const { data: examsData, loading: examsLoading, error: examsError } = useExamsByMonth(monthsFilter)
   const { data: notificationsData, loading: notificationsLoading, error: notificationsError } = useNotificationsByMonth(monthsFilter)
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
-  const { data: mapPoints, loading: mapLoading, error: mapError } = useMapPoints(mapLimitFilter)
+  const { data: geoPoints, loading: geoLoading, error: geoError } = useGeoPoints(mapLimitFilter)
 
   // ============================================================================
   // FUNCIÓN: MANEJAR EL CIERRE DE SESIÓN
@@ -479,7 +478,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {mapError && (
+          {geoError && (
             <div style={{
               padding: '1rem',
               backgroundColor: 'rgba(239, 68, 68, 0.2)',
@@ -488,13 +487,13 @@ export default function DashboardPage() {
               color: 'white',
               marginBottom: '1rem'
             }}>
-              Error al cargar mapa: {mapError}
+              Error al cargar puntos geográficos: {geoError}
             </div>
           )}
 
-          <CoquimboMap 
-            markers={mapPoints || []} 
-            loading={mapLoading}
+          <SimpleMap 
+            points={geoPoints || []} 
+            loading={geoLoading}
           />
         </section>
       </main>
