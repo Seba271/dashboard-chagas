@@ -61,32 +61,27 @@ export default function TendencyChart({
       text: title,
       left: 'center',
       textStyle: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold'
+        color: '#1e293b',
+        fontSize: 15,
+        fontWeight: '600'
       }
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      borderColor: '#667eea',
+      backgroundColor: '#ffffff',
+      borderColor: '#e2e8f0',
       borderWidth: 1,
-      textStyle: {
-        color: '#ffffff'
-      },
+      textStyle: { color: '#334155' },
+      valueFormatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 }),
       axisPointer: {
         type: type === 'line' ? 'line' : 'shadow',
-        shadowStyle: {
-          color: 'rgba(102, 126, 234, 0.2)'
-        }
+        shadowStyle: { color: 'rgba(13, 148, 136, 0.08)' }
       }
     },
     legend: {
       data: ['Exámenes', 'Notificaciones'],
       top: '10%',
-      textStyle: {
-        color: 'rgba(255, 255, 255, 0.8)'
-      }
+      textStyle: { color: '#64748b', fontSize: 12 }
     },
     grid: {
       left: '3%',
@@ -99,34 +94,22 @@ export default function TendencyChart({
       type: 'category',
       data: chartData.months.map(formatMonth),
       axisLabel: {
-        color: 'rgba(255, 255, 255, 0.7)',
+        color: '#64748b',
         fontSize: 11,
         rotate: chartData.months.length > 12 ? 45 : 0
       },
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(255, 255, 255, 0.2)'
-        }
-      }
+      axisLine: { lineStyle: { color: '#e2e8f0' } }
     },
     yAxis: {
       type: 'value',
+      minInterval: 1,
       axisLabel: {
-        color: 'rgba(255, 255, 255, 0.7)',
+        color: '#64748b',
         fontSize: 12,
-        formatter: (value) => value.toLocaleString('es-CL')
+        formatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
       },
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(255, 255, 255, 0.2)'
-        }
-      },
-      splitLine: {
-        lineStyle: {
-          color: 'rgba(255, 255, 255, 0.1)',
-          type: 'dashed'
-        }
-      }
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
     },
     series: [
       {
@@ -134,56 +117,36 @@ export default function TendencyChart({
         type: type,
         data: chartData.exams,
         smooth: type === 'line',
-        itemStyle: {
-          color: '#667eea'
-        },
+        itemStyle: { color: '#0d9488' },
         areaStyle: type === 'line' ? {
           color: {
             type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
+            x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(102, 126, 234, 0.3)' },
-              { offset: 1, color: 'rgba(102, 126, 234, 0.05)' }
+              { offset: 0, color: 'rgba(13, 148, 136, 0.25)' },
+              { offset: 1, color: 'rgba(13, 148, 136, 0.04)' }
             ]
           }
         } : undefined,
-        emphasis: {
-          focus: 'series',
-          itemStyle: {
-            color: '#8b9aff'
-          }
-        }
+        emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } }
       },
       {
         name: 'Notificaciones',
         type: type,
         data: chartData.notifications,
         smooth: type === 'line',
-        itemStyle: {
-          color: '#10b981'
-        },
+        itemStyle: { color: '#f59e0b' },
         areaStyle: type === 'line' ? {
           color: {
             type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
+            x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(16, 185, 129, 0.3)' },
-              { offset: 1, color: 'rgba(16, 185, 129, 0.05)' }
+              { offset: 0, color: 'rgba(245, 158, 11, 0.25)' },
+              { offset: 1, color: 'rgba(245, 158, 11, 0.04)' }
             ]
           }
         } : undefined,
-        emphasis: {
-          focus: 'series',
-          itemStyle: {
-            color: '#34d399'
-          }
-        }
+        emphasis: { focus: 'series', itemStyle: { color: '#d97706' } }
       }
     ]
   }), [chartData, title, type])
@@ -195,27 +158,30 @@ export default function TendencyChart({
         justifyContent: 'center',
         alignItems: 'center',
         height: '400px',
-        color: 'rgba(255, 255, 255, 0.5)'
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '0.75rem',
+        color: '#64748b',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
       }}>
         Cargando gráfico...
       </div>
     )
   }
 
-  // Si no hay datos, mostrar mensaje
   if (chartData.months.length === 0) {
     return (
       <div style={{
-        background: 'rgba(255, 255, 255, 0.1)',
-        backdropFilter: 'blur(10px)',
-        borderRadius: '1rem',
+        background: '#ffffff',
+        borderRadius: '0.75rem',
         padding: '1.5rem',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
+        border: '1px solid #e2e8f0',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         height: '400px',
-        color: 'rgba(255, 255, 255, 0.5)'
+        color: '#64748b',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
       }}>
         No hay datos disponibles
       </div>
@@ -224,11 +190,11 @@ export default function TendencyChart({
 
   return (
     <div style={{
-      background: 'rgba(255, 255, 255, 0.1)',
-      backdropFilter: 'blur(10px)',
-      borderRadius: '1rem',
-      padding: '1.5rem',
-      border: '1px solid rgba(255, 255, 255, 0.2)'
+      background: '#ffffff',
+      borderRadius: '0.75rem',
+      padding: '1.25rem',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
     }}>
       <ReactECharts
         option={option}

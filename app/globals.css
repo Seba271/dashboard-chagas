@@ -56,15 +56,10 @@ body {
    ============================================================================ */
 
 body {
-  /* Fondo degradado morado/azul */
-  /* 135deg = dirección del degradado (diagonal) */
-  /* #667eea = color inicial (azul) */
-  /* #764ba2 = color final (morado) */
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  
-  /* Altura mínima: 100% del viewport (pantalla completa) */
-  /* Esto asegura que el fondo cubra toda la pantalla incluso si hay poco contenido */
+  /* Fondo claro profesional (estilo dashboard moderno) */
+  background: #f1f5f9;
   min-height: 100vh;
+  color: #1e293b;
 }
 
 /* ============================================================================
@@ -135,6 +130,21 @@ a {
 /* Asegurar que los estilos de Leaflet se carguen correctamente */
 .leaflet-container {
   font-family: inherit;
+}
+
+/* ============================================================================
+   VARIABLES DE TEMA (dashboard profesional)
+   ============================================================================ */
+:root {
+  --dashboard-bg: #f1f5f9;
+  --dashboard-card: #ffffff;
+  --dashboard-card-border: #e2e8f0;
+  --dashboard-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --dashboard-accent: #0d9488;
+  --dashboard-accent-light: #ccfbf1;
+  --dashboard-text: #1e293b;
+  --dashboard-text-muted: #64748b;
+  --dashboard-input-border: #cbd5e1;
 }
 
 

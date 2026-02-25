@@ -35,11 +35,7 @@ export default function ComunaBarChart({
         title: {
           text: title,
           left: 'center',
-          textStyle: {
-            color: '#ffffff',
-            fontSize: 16,
-            fontWeight: 'bold'
-          }
+          textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
         }
       }
     }
@@ -48,26 +44,18 @@ export default function ComunaBarChart({
       title: {
         text: title,
         left: 'center',
-        textStyle: {
-          color: '#ffffff',
-          fontSize: 16,
-          fontWeight: 'bold'
-        }
+        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
       },
       tooltip: {
         trigger: 'axis',
-        axisPointer: {
-          type: 'shadow'
-        },
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        borderColor: '#667eea',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: '#ffffff',
+        borderColor: '#e2e8f0',
         borderWidth: 1,
-        textStyle: {
-          color: '#ffffff'
-        },
+        textStyle: { color: '#334155' },
         formatter: (params) => {
           const param = params[0]
-          return `${param.name}<br/>${param.seriesName}: ${param.value.toLocaleString('es-CL')}`
+          return `${param.name}<br/>${param.seriesName}: ${Number(param.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`
         }
       },
       grid: {
@@ -79,35 +67,20 @@ export default function ComunaBarChart({
       },
       xAxis: {
         type: 'value',
+        minInterval: 1,
         axisLabel: {
-          color: 'rgba(255, 255, 255, 0.7)',
+          color: '#64748b',
           fontSize: 12,
-          formatter: (value) => value.toLocaleString('es-CL')
+          formatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
         },
-        axisLine: {
-          lineStyle: {
-            color: 'rgba(255, 255, 255, 0.2)'
-          }
-        },
-        splitLine: {
-          lineStyle: {
-            color: 'rgba(255, 255, 255, 0.1)',
-            type: 'dashed'
-          }
-        }
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
       },
       yAxis: {
         type: 'category',
         data: sortedData.map(d => d.comuna),
-        axisLabel: {
-          color: 'rgba(255, 255, 255, 0.7)',
-          fontSize: 11
-        },
-        axisLine: {
-          lineStyle: {
-            color: 'rgba(255, 255, 255, 0.2)'
-          }
-        }
+        axisLabel: { color: '#64748b', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#e2e8f0' } }
       },
       series: [
         {
@@ -117,13 +90,10 @@ export default function ComunaBarChart({
           itemStyle: {
             color: {
               type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
+              x: 0, y: 0, x2: 1, y2: 0,
               colorStops: [
-                { offset: 0, color: '#667eea' },
-                { offset: 1, color: '#8b9aff' }
+                { offset: 0, color: '#0d9488' },
+                { offset: 1, color: '#14b8a6' }
               ]
             },
             borderRadius: [0, 4, 4, 0]
@@ -131,16 +101,11 @@ export default function ComunaBarChart({
           label: {
             show: true,
             position: 'right',
-            color: 'rgba(255, 255, 255, 0.8)',
+            color: '#475569',
             fontSize: 11,
-            formatter: (params) => params.value.toLocaleString('es-CL')
+            formatter: (params) => Number(params.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
           },
-          emphasis: {
-            focus: 'series',
-            itemStyle: {
-              color: '#8b9aff'
-            }
-          }
+          emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } }
         }
       ]
     }
@@ -153,7 +118,11 @@ export default function ComunaBarChart({
         justifyContent: 'center',
         alignItems: 'center',
         height: '500px',
-        color: 'rgba(255, 255, 255, 0.5)'
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '0.75rem',
+        color: '#64748b',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
       }}>
         Cargando gráfico...
       </div>
@@ -163,16 +132,16 @@ export default function ComunaBarChart({
   if (sortedData.length === 0) {
     return (
       <div style={{
-        background: 'rgba(255, 255, 255, 0.1)',
-        backdropFilter: 'blur(10px)',
-        borderRadius: '1rem',
+        background: '#ffffff',
+        borderRadius: '0.75rem',
         padding: '1.5rem',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
+        border: '1px solid #e2e8f0',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         height: '500px',
-        color: 'rgba(255, 255, 255, 0.5)'
+        color: '#64748b',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
       }}>
         No hay datos disponibles
       </div>
@@ -181,11 +150,11 @@ export default function ComunaBarChart({
 
   return (
     <div style={{
-      background: 'rgba(255, 255, 255, 0.1)',
-      backdropFilter: 'blur(10px)',
-      borderRadius: '1rem',
-      padding: '1.5rem',
-      border: '1px solid rgba(255, 255, 255, 0.2)'
+      background: '#ffffff',
+      borderRadius: '0.75rem',
+      padding: '1.25rem',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
     }}>
       <ReactECharts
         option={option}

@@ -16,9 +16,17 @@ export default function SimpleMap({ points = [], loading = false }) {
   const mapInstanceRef = useRef(null)
   const heatLayerRef = useRef(null)
   const markersRef = useRef([])
+  const initialViewRef = useRef({ center: [-30.6944, -70.9500], zoom: 11 }) // Monte Patria
   const [mounted, setMounted] = useState(false)
   const [error, setError] = useState(null)
   const [mapReady, setMapReady] = useState(false)
+
+  const handleResetZoom = () => {
+    const map = mapInstanceRef.current
+    if (!map) return
+    const { center, zoom } = initialViewRef.current
+    map.flyTo(center, zoom, { duration: 0.5 })
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -201,10 +209,11 @@ export default function SimpleMap({ points = [], loading = false }) {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '500px',
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '1rem',
-        color: 'rgba(255, 255, 255, 0.5)'
+        height: '420px',
+        background: '#f8fafc',
+        borderRadius: '0.75rem',
+        color: '#64748b',
+        border: '1px solid #e2e8f0'
       }}>
         Inicializando mapa...
       </div>
@@ -218,16 +227,17 @@ export default function SimpleMap({ points = [], loading = false }) {
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '500px',
-        background: 'rgba(239, 68, 68, 0.2)',
-        borderRadius: '1rem',
-        color: 'rgba(255, 255, 255, 0.9)',
-        padding: '2rem',
+        height: '420px',
+        background: '#fef2f2',
+        borderRadius: '0.75rem',
+        color: '#dc2626',
+        padding: '1.5rem',
         textAlign: 'center',
-        gap: '1rem'
+        gap: '0.75rem',
+        border: '1px solid #fecaca'
       }}>
-        <p style={{ fontWeight: 'bold' }}>Error al cargar el mapa</p>
-        <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>{error}</p>
+        <p style={{ fontWeight: '600' }}>Error al cargar el mapa</p>
+        <p style={{ fontSize: '0.875rem' }}>{error}</p>
         <button
           onClick={() => {
             setError(null)
@@ -240,7 +250,7 @@ export default function SimpleMap({ points = [], loading = false }) {
           }}
           style={{
             padding: '0.5rem 1rem',
-            backgroundColor: '#667eea',
+            backgroundColor: '#0d9488',
             color: 'white',
             border: 'none',
             borderRadius: '0.5rem',
@@ -260,10 +270,11 @@ export default function SimpleMap({ points = [], loading = false }) {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '500px',
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '1rem',
-        color: 'rgba(255, 255, 255, 0.5)'
+        height: '420px',
+        background: '#f8fafc',
+        borderRadius: '0.75rem',
+        color: '#64748b',
+        border: '1px solid #e2e8f0'
       }}>
         Cargando datos del mapa...
       </div>
@@ -272,58 +283,75 @@ export default function SimpleMap({ points = [], loading = false }) {
 
   return (
     <div style={{
-      background: 'rgba(255, 255, 255, 0.1)',
-      backdropFilter: 'blur(10px)',
-      borderRadius: '1rem',
-      padding: '1.5rem',
-      border: '1px solid rgba(255, 255, 255, 0.2)',
-      overflow: 'hidden'
+      background: '#ffffff',
+      border: '1px solid #e2e8f0',
+      borderRadius: '0.75rem',
+      overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
     }}>
-      <h3 style={{
-        color: '#ffffff',
-        fontSize: '1.25rem',
-        fontWeight: 'bold',
-        marginBottom: '1rem',
-        textAlign: 'center'
-      }}>
-        Mapa de Calor - Monte Patria
-      </h3>
-      
-      <p style={{
-        fontSize: '0.75rem',
-        color: 'rgba(255, 255, 255, 0.7)',
-        textAlign: 'center',
-        marginBottom: '1rem'
-      }}>
-        Cada punto = ubicación de un caso. El color del calor indica zonas con más casos cercanos.
-      </p>
-      
-      <div
-        ref={mapRef}
-        style={{
-          height: '500px',
-          width: '100%',
-          borderRadius: '0.5rem',
-          overflow: 'hidden',
-          position: 'relative',
-          zIndex: 0
-        }}
-      />
-      
-      <p style={{
-        marginTop: '1rem',
-        textAlign: 'center',
-        fontSize: '0.875rem',
-        color: 'rgba(255, 255, 255, 0.7)'
-      }}>
-        {loading ? (
-          'Cargando puntos...'
-        ) : points && points.length > 0 ? (
-          `${points.length} ${points.length === 1 ? 'punto' : 'puntos'} en el mapa de calor`
-        ) : (
-          'Esperando datos...'
+      <div style={{ position: 'relative', width: '100%' }}>
+        <div
+          ref={mapRef}
+          style={{
+            height: '420px',
+            width: '100%',
+            display: 'block',
+            position: 'relative',
+            zIndex: 0
+          }}
+        />
+        {mapReady && (
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            title="Vista general"
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              padding: 0,
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '50%',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f0fdfa'
+              e.currentTarget.style.borderColor = '#0d9488'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ffffff'
+              e.currentTarget.style.borderColor = '#e2e8f0'
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" style={{ display: 'block' }}>
+              <polygon points="5,5 10,6 6,10" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+              <polygon points="19,5 18,10 14,6" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+              <polygon points="19,19 18,14 14,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+              <polygon points="5,19 6,14 10,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+            </svg>
+          </button>
         )}
-        {!mapReady && ' (Inicializando mapa...)'}
+      </div>
+      <p style={{
+        margin: 0,
+        padding: '0.5rem 1rem',
+        textAlign: 'center',
+        fontSize: '0.75rem',
+        color: '#64748b',
+        borderTop: '1px solid #e2e8f0',
+        background: '#f8fafc'
+      }}>
+        {loading ? 'Cargando puntos...' : points?.length > 0
+          ? `Cada punto = ubicación de un caso · ${points.length} ${points.length === 1 ? 'punto' : 'puntos'}`
+          : 'Esperando datos...'}
       </p>
     </div>
   )

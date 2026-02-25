@@ -23,8 +23,8 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
 import { useKpiSummary } from '@/src/hooks/useKpiSummary'
-import { useExamsByMonth } from '@/src/hooks/useExamsByMonth'
-import { useNotificationsByMonth } from '@/src/hooks/useNotificationsByMonth'
+import { useExamsByDateRange } from '@/src/hooks/useExamsByDateRange'
+import { useNotificationsByDateRange } from '@/src/hooks/useNotificationsByDateRange'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
 import { useGeoPoints } from '@/src/hooks/useGeoPoints'
 import KpiCard from '@/src/components/KpiCard'
@@ -42,10 +42,11 @@ const SimpleMap = dynamic(
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '500px',
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '1rem',
-        color: 'rgba(255, 255, 255, 0.5)'
+        height: '420px',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: '0.75rem',
+        color: '#64748b'
       }}>
         Cargando mapa...
       </div>
@@ -60,15 +61,25 @@ export default function DashboardPage() {
   const router = useRouter()
   const { user, loading: sessionLoading, error: sessionError } = useSession()
   
-  // Estados para filtros
-  const [monthsFilter, setMonthsFilter] = useState(12)
+  // Rango de fechas por defecto: últimos 12 meses
+  const getDefaultDates = () => {
+    const today = new Date()
+    const from = new Date(today)
+    from.setMonth(from.getMonth() - 12)
+    return {
+      from: from.toISOString().slice(0, 10),
+      to: today.toISOString().slice(0, 10)
+    }
+  }
+  const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
+  const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
   const [comunaLimitFilter, setComunaLimitFilter] = useState(10)
   const [mapLimitFilter, setMapLimitFilter] = useState(1000)
 
-  // Hooks para obtener datos
+  // Hooks para obtener datos (gráficos por rango de fechas)
   const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
-  const { data: examsData, loading: examsLoading, error: examsError } = useExamsByMonth(monthsFilter)
-  const { data: notificationsData, loading: notificationsLoading, error: notificationsError } = useNotificationsByMonth(monthsFilter)
+  const { data: examsData, loading: examsLoading, error: examsError } = useExamsByDateRange(dateFrom, dateTo)
+  const { data: notificationsData, loading: notificationsLoading, error: notificationsError } = useNotificationsByDateRange(dateFrom, dateTo)
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
   const { data: geoPoints, loading: geoLoading, error: geoError } = useGeoPoints(mapLimitFilter)
 
@@ -103,7 +114,8 @@ export default function DashboardPage() {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
-        color: 'white'
+        color: '#64748b',
+        background: '#f1f5f9'
       }}>
         <div style={{ fontSize: '1.25rem' }}>Cargando dashboard...</div>
       </div>
@@ -124,22 +136,25 @@ export default function DashboardPage() {
         padding: '1rem'
       }}>
         <div style={{
-          background: 'white',
+          background: '#ffffff',
           borderRadius: '1rem',
           padding: '2rem',
           maxWidth: '500px',
-          textAlign: 'center'
+          textAlign: 'center',
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
+          border: '1px solid #e2e8f0'
         }}>
           <p style={{ color: '#dc2626', marginBottom: '1rem' }}>{sessionError}</p>
           <button
             onClick={() => router.push('/login')}
             style={{
               padding: '0.75rem 1.5rem',
-              backgroundColor: '#667eea',
+              backgroundColor: '#0d9488',
               color: 'white',
               border: 'none',
               borderRadius: '0.5rem',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontWeight: '500'
             }}
           >
             Ir a Login
@@ -153,54 +168,77 @@ export default function DashboardPage() {
   // RENDERIZADO: CONTENIDO PRINCIPAL DEL DASHBOARD
   // ============================================================================
   
+  const cardStyle = {
+    background: '#ffffff',
+    borderRadius: '0.75rem',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+  }
+  const inputStyle = {
+    padding: '0.5rem 0.75rem',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    border: '1px solid #cbd5e1',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem'
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
       padding: '2rem',
-      color: 'white'
+      background: '#f1f5f9',
+      color: '#1e293b'
     }}>
       {/* ========================================================================
           HEADER: Encabezado con título y botón de logout
           ======================================================================== */}
       <header style={{
+        ...cardStyle,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: '2rem',
-        paddingBottom: '1rem',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.2)'
+        padding: '1.25rem 1.5rem'
       }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.25rem', color: '#1e293b' }}>
             Dashboard Chagas
           </h1>
-          <p style={{ opacity: 0.9, fontSize: '0.875rem' }}>
-            Región de Coquimbo - Indicadores Epidemiológicos
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            Región de Coquimbo — Indicadores Epidemiológicos
           </p>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>Usuario:</p>
-            <p style={{ fontWeight: '500' }}>{user?.email || 'N/A'}</p>
+            <p style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Usuario</p>
+            <p style={{ fontWeight: '500', fontSize: '0.875rem', color: '#1e293b' }}>{user?.email || 'N/A'}</p>
           </div>
           
           <button
             onClick={handleLogout}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-              color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
+              backgroundColor: '#ffffff',
+              color: '#0d9488',
+              border: '1px solid #0d9488',
               borderRadius: '0.5rem',
               cursor: 'pointer',
               fontSize: '0.875rem',
-              transition: 'background-color 0.2s'
+              fontWeight: '500',
+              transition: 'all 0.2s'
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#0d9488'
+              e.target.style.color = '#ffffff'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = '#ffffff'
+              e.target.style.color = '#0d9488'
+            }}
           >
-            Cerrar Sesión
+            Cerrar sesión
           </button>
         </div>
       </header>
@@ -212,22 +250,24 @@ export default function DashboardPage() {
         {/* Sección de KPIs */}
         <section style={{ marginBottom: '2rem' }}>
           <h2 style={{
-            fontSize: '1.5rem',
-            fontWeight: 'bold',
-            marginBottom: '1.5rem',
-            color: 'white'
+            fontSize: '1.25rem',
+            fontWeight: '600',
+            marginBottom: '1rem',
+            color: '#1e293b',
+            letterSpacing: '-0.02em'
           }}>
-            Indicadores Principales
+            Indicadores principales
           </h2>
           
           {kpiError && (
             <div style={{
               padding: '1rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.2)',
-              border: '1px solid rgba(239, 68, 68, 0.5)',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
               borderRadius: '0.5rem',
-              color: 'white',
-              marginBottom: '1rem'
+              color: '#dc2626',
+              marginBottom: '1rem',
+              fontSize: '0.875rem'
             }}>
               Error al cargar KPIs: {kpiError}
             </div>
@@ -235,58 +275,16 @@ export default function DashboardPage() {
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.5rem'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '1rem'
           }}>
-            <KpiCard
-              title="Total Personas"
-              value={kpiData?.total_personas || 0}
-              icon="👥"
-              color="#667eea"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Total Exámenes"
-              value={kpiData?.total_examenes || 0}
-              icon="🔬"
-              color="#10b981"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Bajo Control"
-              value={kpiData?.total_bajo_control || 0}
-              icon="✅"
-              color="#3b82f6"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Casos Agudos"
-              value={kpiData?.total_agudo || 0}
-              icon="⚠️"
-              color="#f59e0b"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Gestantes"
-              value={kpiData?.total_gestantes || 0}
-              icon="🤰"
-              color="#ec4899"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Inasistentes"
-              value={kpiData?.total_inasistentes || 0}
-              icon="📅"
-              color="#ef4444"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="Tratamientos"
-              value={kpiData?.total_tratamientos || 0}
-              icon="💊"
-              color="#8b5cf6"
-              loading={kpiLoading}
-            />
+            <KpiCard title="Total Personas" value={kpiData?.total_personas || 0} icon="👥" color="#0d9488" loading={kpiLoading} />
+            <KpiCard title="Total Exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
+            <KpiCard title="Bajo Control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
+            <KpiCard title="Casos Agudos" value={kpiData?.total_agudo || 0} icon="⚠️" color="#f59e0b" loading={kpiLoading} />
+            <KpiCard title="Gestantes" value={kpiData?.total_gestantes || 0} icon="🤰" color="#0d9488" loading={kpiLoading} />
+            <KpiCard title="Inasistentes" value={kpiData?.total_inasistentes || 0} icon="📅" color="#ef4444" loading={kpiLoading} />
+            <KpiCard title="Tratamientos" value={kpiData?.total_tratamientos || 0} icon="💊" color="#0d9488" loading={kpiLoading} />
           </div>
         </section>
 
@@ -296,45 +294,24 @@ export default function DashboardPage() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1.5rem'
+            marginBottom: '1rem',
+            flexWrap: 'wrap',
+            gap: '1rem'
           }}>
             <h2 style={{
-              fontSize: '1.5rem',
-              fontWeight: 'bold',
-              color: 'white'
+              fontSize: '1.25rem',
+              fontWeight: '600',
+              color: '#1e293b',
+              letterSpacing: '-0.02em'
             }}>
-              Análisis Temporal y Geográfico
+              Análisis temporal y geográfico
             </h2>
             
-            {/* Filtro de meses para gráficos */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}>
-              <label style={{
-                fontSize: '0.875rem',
-                color: 'rgba(255, 255, 255, 0.8)'
-              }}>
-                Período:
-              </label>
-              <select
-                value={monthsFilter}
-                onChange={(e) => setMonthsFilter(parseInt(e.target.value))}
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value={6}>6 meses</option>
-                <option value={12}>12 meses</option>
-                <option value={24}>24 meses</option>
-              </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Desde</label>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} style={inputStyle} />
+              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Hasta</label>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} style={inputStyle} />
             </div>
           </div>
 
@@ -348,10 +325,10 @@ export default function DashboardPage() {
               {(examsError || notificationsError) && (
                 <div style={{
                   padding: '0.75rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
                   borderRadius: '0.5rem',
-                  color: 'white',
+                  color: '#dc2626',
                   marginBottom: '1rem',
                   fontSize: '0.875rem'
                 }}>
@@ -370,51 +347,24 @@ export default function DashboardPage() {
 
             {/* Gráfico de Distribución por Comuna */}
             <div>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '1rem'
-              }}>
-                <div style={{ flex: 1 }} />
-                {/* Filtro de límite para comunas */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  <label style={{
-                    fontSize: '0.875rem',
-                    color: 'rgba(255, 255, 255, 0.8)'
-                  }}>
-                    Top:
-                  </label>
-                  <select
-                    value={comunaLimitFilter}
-                    onChange={(e) => setComunaLimitFilter(parseInt(e.target.value))}
-                    style={{
-                      padding: '0.5rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      color: 'white',
-                      border: '1px solid rgba(255, 255, 255, 0.3)',
-                      borderRadius: '0.5rem',
-                      fontSize: '0.875rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value={10}>10</option>
-                    <option value={20}>20</option>
-                  </select>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '0.75rem', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Top</label>
+                <select
+                  value={comunaLimitFilter}
+                  onChange={(e) => setComunaLimitFilter(parseInt(e.target.value))}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
               </div>
-              
               {comunaError && (
                 <div style={{
                   padding: '0.75rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
                   borderRadius: '0.5rem',
-                  color: 'white',
+                  color: '#dc2626',
                   marginBottom: '1rem',
                   fontSize: '0.875rem'
                 }}>
@@ -436,40 +386,19 @@ export default function DashboardPage() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1.5rem'
+            marginBottom: '1rem',
+            flexWrap: 'wrap',
+            gap: '1rem'
           }}>
-            <h2 style={{
-              fontSize: '1.5rem',
-              fontWeight: 'bold',
-              color: 'white'
-            }}>
-              Mapa Geográfico
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1e293b', letterSpacing: '-0.02em' }}>
+              Mapa geográfico
             </h2>
-            
-            {/* Filtro de límite para mapa */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}>
-              <label style={{
-                fontSize: '0.875rem',
-                color: 'rgba(255, 255, 255, 0.8)'
-              }}>
-                Límite de puntos:
-              </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Límite de puntos</label>
               <select
                 value={mapLimitFilter}
                 onChange={(e) => setMapLimitFilter(parseInt(e.target.value))}
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.875rem',
-                  cursor: 'pointer'
-                }}
+                style={{ ...inputStyle, cursor: 'pointer' }}
               >
                 <option value={500}>500</option>
                 <option value={1000}>1000</option>
@@ -477,24 +406,21 @@ export default function DashboardPage() {
               </select>
             </div>
           </div>
-
           {geoError && (
             <div style={{
               padding: '1rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.2)',
-              border: '1px solid rgba(239, 68, 68, 0.5)',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
               borderRadius: '0.5rem',
-              color: 'white',
-              marginBottom: '1rem'
+              color: '#dc2626',
+              marginBottom: '1rem',
+              fontSize: '0.875rem'
             }}>
               Error al cargar puntos geográficos: {geoError}
             </div>
           )}
 
-          <SimpleMap 
-            points={geoPoints || []} 
-            loading={geoLoading}
-          />
+          <SimpleMap points={geoPoints || []} loading={geoLoading} />
         </section>
       </main>
     </div>
