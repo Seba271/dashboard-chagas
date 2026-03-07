@@ -2,17 +2,15 @@
  * ============================================================================
  * COMPONENTE: TendencyChart
  * ============================================================================
- * 
- * Gráfico de línea/barra para mostrar tendencia temporal de indicadores.
- * Soporta múltiples series (Exámenes y Notificaciones).
- * Usa Apache ECharts para renderizar el gráfico.
+ * Gráfico de tendencia temporal de casos (personas con Chagas en el tiempo).
+ * Opcional: serie punteada del mismo período del año anterior.
  * 
  * PROPS:
- * - examsData: Array<{month: string, value: number}> - Datos de exámenes por mes
- * - notificationsData: Array<{month: string, value: number}> - Datos de notificaciones por mes
- * - title?: string - Título del gráfico (opcional)
- * - type?: 'line' | 'bar' - Tipo de gráfico (default: 'line')
- * - loading?: boolean - Mostrar estado de carga (opcional)
+ * - casesData: Array<{month: string, value: number}> - Casos por fecha (month = YYYY-MM-DD)
+ * - prevCasesData?: Array<{month: string, value: number}> - Casos año anterior
+ * - title?: string - Título del gráfico
+ * - type?: 'line' | 'bar'
+ * - loading?: boolean
  */
 
 'use client'
@@ -20,102 +18,58 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 
-export default function TendencyChart({ 
-  examsData = [],
-  notificationsData = [],
-  title = 'Tendencia Temporal',
+export default function TendencyChart({
+  casesData = [],
+  prevCasesData = [],
+  title = 'Casos en el tiempo',
   type = 'line',
-  loading = false 
+  loading = false
 }) {
-  // Combinar y normalizar datos de ambas series
   const chartData = useMemo(() => {
-    // Obtener todos los meses únicos de ambas series
     const allMonths = new Set()
-    
-    examsData.forEach(item => allMonths.add(item.month))
-    notificationsData.forEach(item => allMonths.add(item.month))
-    
+    casesData.forEach(item => allMonths.add(item.month))
+    prevCasesData.forEach(item => allMonths.add(item.month))
     const sortedMonths = Array.from(allMonths).sort()
-    
-    // Crear mapas para búsqueda rápida
-    const examsMap = new Map(examsData.map(item => [item.month, item.value]))
-    const notificationsMap = new Map(notificationsData.map(item => [item.month, item.value]))
-    
-    // Construir datos combinados
+
+    const casesMap = new Map(casesData.map(item => [item.month, item.value]))
+    const getMonthKey = (monthStr) => {
+      if (!monthStr) return null
+      const parts = monthStr.split('-')
+      return parts[1] || null
+    }
+    const prevMap = new Map(prevCasesData.map(item => [getMonthKey(item.month), item.value]))
+
     return {
       months: sortedMonths,
-      exams: sortedMonths.map(month => examsMap.get(month) || 0),
-      notifications: sortedMonths.map(month => notificationsMap.get(month) || 0)
+      cases: sortedMonths.map(month => casesMap.get(month) || 0),
+      casesPrev: sortedMonths.map(month => {
+        const key = getMonthKey(month)
+        return (key && prevMap.get(key)) || 0
+      }),
+      hasPrev: prevCasesData && prevCasesData.length > 0
     }
-  }, [examsData, notificationsData])
+  }, [casesData, prevCasesData])
 
-  // Formatear meses para mostrar (YYYY-MM -> MMM)
-  const formatMonth = (monthStr) => {
-    const [year, month] = monthStr.split('-')
+  const formatLabel = (dateStr) => {
+    const parts = dateStr.split('-')
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-    return `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`
+    if (parts.length === 3) {
+      const [, month, day] = parts
+      return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]} ${parts[0].slice(2)}`
+    }
+    if (parts.length === 2) {
+      return `${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0].slice(2)}`
+    }
+    return dateStr
   }
 
-  const option = useMemo(() => ({
-    title: {
-      text: title,
-      left: 'center',
-      textStyle: {
-        color: '#1e293b',
-        fontSize: 15,
-        fontWeight: '600'
-      }
-    },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#ffffff',
-      borderColor: '#e2e8f0',
-      borderWidth: 1,
-      textStyle: { color: '#334155' },
-      valueFormatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 }),
-      axisPointer: {
-        type: type === 'line' ? 'line' : 'shadow',
-        shadowStyle: { color: 'rgba(13, 148, 136, 0.08)' }
-      }
-    },
-    legend: {
-      data: ['Exámenes', 'Notificaciones'],
-      top: '10%',
-      textStyle: { color: '#64748b', fontSize: 12 }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '20%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: chartData.months.map(formatMonth),
-      axisLabel: {
-        color: '#64748b',
-        fontSize: 11,
-        rotate: chartData.months.length > 12 ? 45 : 0
-      },
-      axisLine: { lineStyle: { color: '#e2e8f0' } }
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1,
-      axisLabel: {
-        color: '#64748b',
-        fontSize: 12,
-        formatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
-      },
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
-    },
-    series: [
+  const option = useMemo(() => {
+    const legendItems = chartData.hasPrev ? ['Casos', 'Casos (año anterior)'] : ['Casos']
+    const series = [
       {
-        name: 'Exámenes',
+        name: 'Casos',
         type: type,
-        data: chartData.exams,
+        data: chartData.cases,
         smooth: type === 'line',
         itemStyle: { color: '#0d9488' },
         areaStyle: type === 'line' ? {
@@ -129,27 +83,73 @@ export default function TendencyChart({
           }
         } : undefined,
         emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } }
-      },
-      {
-        name: 'Notificaciones',
-        type: type,
-        data: chartData.notifications,
-        smooth: type === 'line',
-        itemStyle: { color: '#f59e0b' },
-        areaStyle: type === 'line' ? {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(245, 158, 11, 0.25)' },
-              { offset: 1, color: 'rgba(245, 158, 11, 0.04)' }
-            ]
-          }
-        } : undefined,
-        emphasis: { focus: 'series', itemStyle: { color: '#d97706' } }
       }
     ]
-  }), [chartData, title, type])
+    if (chartData.hasPrev) {
+      series.push({
+        name: 'Casos (año anterior)',
+        type: type,
+        data: chartData.casesPrev,
+        smooth: type === 'line',
+        itemStyle: { color: '#0d9488' },
+        lineStyle: { type: 'dashed' },
+        areaStyle: undefined
+      })
+    }
+    return {
+      title: {
+        text: title,
+        left: 'center',
+        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: '#ffffff',
+        borderColor: '#e2e8f0',
+        borderWidth: 1,
+        textStyle: { color: '#334155' },
+        valueFormatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 }),
+        axisPointer: {
+          type: type === 'line' ? 'line' : 'shadow',
+          shadowStyle: { color: 'rgba(13, 148, 136, 0.08)' }
+        }
+      },
+      legend: {
+        data: legendItems,
+        top: '10%',
+        textStyle: { color: '#64748b', fontSize: 12 }
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        top: '20%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: chartData.months.map(formatLabel),
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 11,
+          rotate: chartData.months.length > 8 ? 45 : 0
+        },
+        axisLine: { lineStyle: { color: '#e2e8f0' } }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 12,
+          formatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
+        },
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+      },
+      series
+    }
+  }, [chartData, title, type])
 
   if (loading) {
     return (
@@ -183,7 +183,7 @@ export default function TendencyChart({
         color: '#64748b',
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
       }}>
-        No hay datos disponibles
+        No hay datos de casos en el período seleccionado
       </div>
     )
   }

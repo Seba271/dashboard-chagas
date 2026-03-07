@@ -18,13 +18,12 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
 import { useKpiSummary } from '@/src/hooks/useKpiSummary'
-import { useExamsByDateRange } from '@/src/hooks/useExamsByDateRange'
-import { useNotificationsByDateRange } from '@/src/hooks/useNotificationsByDateRange'
+import { useCasesByDateRange } from '@/src/hooks/useCasesByDateRange'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
 import { useGeoPoints } from '@/src/hooks/useGeoPoints'
 import KpiCard from '@/src/components/KpiCard'
@@ -76,12 +75,24 @@ export default function DashboardPage() {
   const [comunaLimitFilter, setComunaLimitFilter] = useState(10)
   const [mapLimitFilter, setMapLimitFilter] = useState(1000)
 
-  // Hooks para obtener datos (gráficos por rango de fechas)
+  // Hooks para obtener datos
   const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
-  const { data: examsData, loading: examsLoading, error: examsError } = useExamsByDateRange(dateFrom, dateTo)
-  const { data: notificationsData, loading: notificationsLoading, error: notificationsError } = useNotificationsByDateRange(dateFrom, dateTo)
+  const { data: casesData, loading: casesLoading, error: casesError } = useCasesByDateRange(dateFrom, dateTo)
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
   const { data: geoPoints, loading: geoLoading, error: geoError } = useGeoPoints(mapLimitFilter)
+
+  // Rango año anterior para comparación interanual (casos)
+  const { prevFrom, prevTo } = useMemo(() => {
+    if (!dateFrom || !dateTo) return { prevFrom: null, prevTo: null }
+    const from = new Date(dateFrom)
+    const to = new Date(dateTo)
+    const fromPrev = new Date(from)
+    const toPrev = new Date(to)
+    fromPrev.setFullYear(fromPrev.getFullYear() - 1)
+    toPrev.setFullYear(toPrev.getFullYear() - 1)
+    return { prevFrom: fromPrev.toISOString().slice(0, 10), prevTo: toPrev.toISOString().slice(0, 10) }
+  }, [dateFrom, dateTo])
+  const { data: prevCasesData, loading: prevCasesLoading, error: prevCasesError } = useCasesByDateRange(prevFrom, prevTo)
 
   // ============================================================================
   // FUNCIÓN: MANEJAR EL CIERRE DE SESIÓN
@@ -167,7 +178,20 @@ export default function DashboardPage() {
   // ============================================================================
   // RENDERIZADO: CONTENIDO PRINCIPAL DEL DASHBOARD
   // ============================================================================
-  
+  // Base para %: solo personas con Chagas (casos), no el total de persona
+  const totalCasos = kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0
+  const kpiPercentages = {
+    pctBajoControl: totalCasos && kpiData?.total_bajo_control != null
+      ? (kpiData.total_bajo_control / totalCasos) * 100
+      : 0,
+    pctAgudo: totalCasos && kpiData?.total_agudo != null
+      ? (kpiData.total_agudo / totalCasos) * 100
+      : 0,
+    pctGestantes: totalCasos && kpiData?.total_gestantes != null
+      ? (kpiData.total_gestantes / totalCasos) * 100
+      : 0
+  }
+
   const cardStyle = {
     background: '#ffffff',
     borderRadius: '0.75rem',
@@ -278,13 +302,46 @@ export default function DashboardPage() {
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '1rem'
           }}>
-            <KpiCard title="Total Personas" value={kpiData?.total_personas || 0} icon="👥" color="#0d9488" loading={kpiLoading} />
+            <KpiCard title="Total casos (Chagas)" value={kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0} icon="👥" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Total Exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Bajo Control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Casos Agudos" value={kpiData?.total_agudo || 0} icon="⚠️" color="#f59e0b" loading={kpiLoading} />
             <KpiCard title="Gestantes" value={kpiData?.total_gestantes || 0} icon="🤰" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Inasistentes" value={kpiData?.total_inasistentes || 0} icon="📅" color="#ef4444" loading={kpiLoading} />
             <KpiCard title="Tratamientos" value={kpiData?.total_tratamientos || 0} icon="💊" color="#0d9488" loading={kpiLoading} />
+            <KpiCard
+              title="% Bajo control"
+              value={
+                kpiLoading || !totalCasos
+                  ? 'N/A'
+                  : `${kpiPercentages.pctBajoControl.toFixed(1)} %`
+              }
+              icon="📈"
+              color="#0d9488"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="% Casos agudos"
+              value={
+                kpiLoading || !totalCasos
+                  ? 'N/A'
+                  : `${kpiPercentages.pctAgudo.toFixed(1)} %`
+              }
+              icon="⚠️"
+              color="#f97316"
+              loading={kpiLoading}
+            />
+            <KpiCard
+              title="% Gestantes"
+              value={
+                kpiLoading || !totalCasos
+                  ? 'N/A'
+                  : `${kpiPercentages.pctGestantes.toFixed(1)} %`
+              }
+              icon="🤰"
+              color="#0ea5e9"
+              loading={kpiLoading}
+            />
           </div>
         </section>
 
@@ -320,9 +377,9 @@ export default function DashboardPage() {
             gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
             gap: '1.5rem'
           }}>
-            {/* Gráfico de Tendencia */}
+            {/* Gráfico: Casos en el tiempo */}
             <div>
-              {(examsError || notificationsError) && (
+              {(casesError || prevCasesError) && (
                 <div style={{
                   padding: '0.75rem',
                   backgroundColor: '#fef2f2',
@@ -332,16 +389,16 @@ export default function DashboardPage() {
                   marginBottom: '1rem',
                   fontSize: '0.875rem'
                 }}>
-                  {examsError && `Error exámenes: ${examsError}`}
-                  {notificationsError && ` Error notificaciones: ${notificationsError}`}
+                  {casesError && `Error casos: ${casesError}`}
+                  {prevCasesError && ` Error casos (año anterior): ${prevCasesError}`}
                 </div>
               )}
               <TendencyChart
-                examsData={examsData || []}
-                notificationsData={notificationsData || []}
-                title="Tendencia Temporal"
+                casesData={casesData || []}
+                prevCasesData={prevCasesData || []}
+                title="Casos en el tiempo"
                 type="line"
-                loading={examsLoading || notificationsLoading}
+                loading={casesLoading || prevCasesLoading}
               />
             </div>
 
