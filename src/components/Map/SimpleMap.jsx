@@ -154,32 +154,33 @@ export default function SimpleMap({ points = [], loading = false }) {
         if (validPoints.length === 0) return
 
         // 1. Capa de calor (de fondo)
+        // Usamos radio grande y opacidad mayor para resaltar zonas con puntos cercanos.
         const heatData = validPoints.map(p => [p.lat, p.lng, 1])
         const heat = L.heatLayer(heatData, {
-          radius: 25,
-          blur: 20,
+          radius: 45,
+          blur: 25,
           maxZoom: 17,
-          minOpacity: 0.3,
+          minOpacity: 0.55,
           max: 1,
           gradient: {
-            0.0: '#667eea',
-            0.3: '#8b9aff',
-            0.5: '#10b981',
-            0.7: '#f59e0b',
-            1.0: '#ef4444'
+            0.0: '#22c55e',   // verde suave
+            0.4: '#eab308',   // amarillo
+            0.7: '#f97316',   // naranjo
+            1.0: '#b91c1c'    // rojo intenso
           }
         })
         heat.addTo(map)
         heatLayerRef.current = heat
 
-        // 2. Puntos = ubicación de cada caso (encima del heatmap)
+        // 2. Puntos = ubicación de cada caso (encima del heatmap). Casos del mes actual = rojo.
         validPoints.forEach((point) => {
+          const isNewCase = point.isNewCase === true
           const marker = L.circleMarker([point.lat, point.lng], {
-            radius: 6,
-            color: '#0f172a',
-            fillColor: '#ffffff',
-            fillOpacity: 1,
-            weight: 2
+            radius: 5,
+            color: isNewCase ? '#b91c1c' : '#0f172a',
+            fillColor: isNewCase ? '#dc2626' : '#ffffff',
+            fillOpacity: 0.85,
+            weight: isNewCase ? 2 : 1.5
           })
           marker.addTo(map)
           // Al hacer clic en el punto, hacer zoom a la zona
@@ -301,10 +302,57 @@ export default function SimpleMap({ points = [], loading = false }) {
           }}
         />
         {mapReady && (
-          <button
-            type="button"
-            onClick={handleResetZoom}
-            title="Vista general"
+          <>
+            <div
+              title="Leyenda"
+              style={{
+                position: 'absolute',
+                bottom: '12px',
+                left: '10px',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '8px 12px',
+                background: 'rgba(255,255,255,0.95)',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                fontSize: '12px',
+                color: '#334155'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: '#dc2626',
+                    border: '2px solid #b91c1c',
+                    flexShrink: 0
+                  }}
+                />
+                <span>Casos de este mes</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    border: '2px solid #0f172a',
+                    flexShrink: 0
+                  }}
+                />
+                <span>Resto de casos</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              title="Vista general"
             style={{
               position: 'absolute',
               top: '10px',
@@ -338,6 +386,7 @@ export default function SimpleMap({ points = [], loading = false }) {
               <polygon points="5,19 6,14 10,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
             </svg>
           </button>
+          </>
         )}
       </div>
       <p style={{

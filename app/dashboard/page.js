@@ -25,7 +25,7 @@ import { useSession } from '@/src/hooks/useSession'
 import { useKpiSummary } from '@/src/hooks/useKpiSummary'
 import { useCasesByDateRange } from '@/src/hooks/useCasesByDateRange'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
-import { useGeoPoints } from '@/src/hooks/useGeoPoints'
+import { useMapPoints } from '@/src/hooks/useMapPoints'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
@@ -73,13 +73,13 @@ export default function DashboardPage() {
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
   const [comunaLimitFilter, setComunaLimitFilter] = useState(10)
-  const [mapLimitFilter, setMapLimitFilter] = useState(1000)
+  const [mapYearFilter, setMapYearFilter] = useState('all')
 
   // Hooks para obtener datos
   const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
   const { data: casesData, loading: casesLoading, error: casesError } = useCasesByDateRange(dateFrom, dateTo)
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
-  const { data: geoPoints, loading: geoLoading, error: geoError } = useGeoPoints(mapLimitFilter)
+  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(mapYearFilter)
 
   // Rango año anterior para comparación interanual (casos)
   const { prevFrom, prevTo } = useMemo(() => {
@@ -430,7 +430,7 @@ export default function DashboardPage() {
               )}
               <ComunaBarChart
                 data={comunaData || []}
-                title="Distribución por Comuna"
+                title="Casos por comuna"
                 loading={comunaLoading}
               />
             </div>
@@ -451,15 +451,15 @@ export default function DashboardPage() {
               Mapa geográfico
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Límite de puntos</label>
+              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Año</label>
               <select
-                value={mapLimitFilter}
-                onChange={(e) => setMapLimitFilter(parseInt(e.target.value))}
+                value={mapYearFilter}
+                onChange={(e) => setMapYearFilter(e.target.value)}
                 style={{ ...inputStyle, cursor: 'pointer' }}
               >
-                <option value={500}>500</option>
-                <option value={1000}>1000</option>
-                <option value={2000}>2000</option>
+                <option value="all">Todo el tiempo</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
               </select>
             </div>
           </div>
