@@ -12,6 +12,9 @@
  * 
  * PARÁMETROS:
  * - yearFilter: 'all' | '2025' | '2026' | string numérico de año
+ * - caseType: 'all' | 'agudo' | 'bajo_control' | 'gestante'
+ * - sex: 'all' | 'M' | 'F'
+ * - ageGroup: 'all' | '0_14' | '15_29' | '30_44' | '45_59' | '60_plus'
  * 
  * RETORNA:
  * {
@@ -27,7 +30,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 
-export function useMapPoints(yearFilter = 'all') {
+export function useMapPoints(yearFilter = 'all', caseType = 'all', sex = 'all', ageGroup = 'all') {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -45,6 +48,18 @@ export function useMapPoints(yearFilter = 'all') {
         if (!Number.isNaN(parsed)) {
           params.p_year = parsed
         }
+      }
+
+      if (caseType && caseType !== 'all') {
+        params.p_case_type = caseType
+      }
+
+      if (sex && sex !== 'all') {
+        params.p_sex = sex
+      }
+
+      if (ageGroup && ageGroup !== 'all') {
+        params.p_age_group = ageGroup
       }
 
       // Llamar al RPC get_map_points (solo casos, opcionalmente filtrados por año)
@@ -80,9 +95,9 @@ export function useMapPoints(yearFilter = 'all') {
     } finally {
       setLoading(false)
     }
-  }, [yearFilter])
+  }, [yearFilter, caseType, sex, ageGroup])
 
-  // Cargar datos al montar o cuando cambie el filtro de año
+  // Cargar datos al montar o cuando cambie el filtro de año, tipo de caso, sexo o grupo etario
   useEffect(() => {
     fetchData()
   }, [fetchData])

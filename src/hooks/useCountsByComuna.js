@@ -11,7 +11,9 @@
  * - Permite recargar datos con refetch
  * 
  * PARÁMETROS:
- * - limit: int - Número máximo de comunas a obtener (default: 10)
+ * - caseType: 'all' | 'agudo' | 'bajo_control' | 'gestante'
+ * - sex: 'all' | 'M' | 'F'
+ * - ageGroup: 'all' | '0_14' | '15_29' | '30_44' | '45_59' | '60_plus'
  * 
  * RETORNA:
  * {
@@ -27,7 +29,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 
-export function useCountsByComuna(limit = 10) {
+export function useCountsByComuna(caseType = 'all', sex = 'all', ageGroup = 'all') {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -39,10 +41,23 @@ export function useCountsByComuna(limit = 10) {
 
       const supabase = createSupabaseClient()
 
-      // Llamar al RPC get_counts_by_comuna
+      // Llamar al RPC get_counts_by_comuna (solo casos, opcionalmente filtrados por tipo, sexo y grupo etario)
+      const params = { p_limit: 50 }
+      if (caseType && caseType !== 'all') {
+        params.p_case_type = caseType
+      }
+
+      if (sex && sex !== 'all') {
+        params.p_sex = sex
+      }
+
+      if (ageGroup && ageGroup !== 'all') {
+        params.p_age_group = ageGroup
+      }
+
       const { data: rpcData, error: rpcError } = await supabase.rpc(
         'get_counts_by_comuna',
-        { p_limit: limit }
+        params
       )
 
       if (rpcError) {
@@ -66,9 +81,9 @@ export function useCountsByComuna(limit = 10) {
     } finally {
       setLoading(false)
     }
-  }, [limit])
+  }, [caseType, sex, ageGroup])
 
-  // Cargar datos al montar o cuando cambie el parámetro limit
+  // Cargar datos al montar o cuando cambie el parámetro caseType, sex o ageGroup
   useEffect(() => {
     fetchData()
   }, [fetchData])

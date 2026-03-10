@@ -72,14 +72,28 @@ export default function DashboardPage() {
   }
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
-  const [comunaLimitFilter, setComunaLimitFilter] = useState(10)
   const [mapYearFilter, setMapYearFilter] = useState('all')
+  const [caseTypeComunaFilter, setCaseTypeComunaFilter] = useState('all')
+  const [caseTypeMapFilter, setCaseTypeMapFilter] = useState('all')
+  const [sexComunaFilter, setSexComunaFilter] = useState('all')
+  const [sexMapFilter, setSexMapFilter] = useState('all')
+  const [ageGroupComunaFilter, setAgeGroupComunaFilter] = useState('all')
+  const [ageGroupMapFilter, setAgeGroupMapFilter] = useState('all')
 
   // Hooks para obtener datos
   const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
   const { data: casesData, loading: casesLoading, error: casesError } = useCasesByDateRange(dateFrom, dateTo)
-  const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(comunaLimitFilter)
-  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(mapYearFilter)
+  const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(
+    caseTypeComunaFilter,
+    sexComunaFilter,
+    ageGroupComunaFilter
+  )
+  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(
+    mapYearFilter,
+    caseTypeMapFilter,
+    sexMapFilter,
+    ageGroupMapFilter
+  )
 
   // Rango año anterior para comparación interanual (casos)
   const { prevFrom, prevTo } = useMemo(() => {
@@ -210,9 +224,11 @@ export default function DashboardPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      padding: '2rem',
+      padding: '1.5rem 1rem',
       background: '#f1f5f9',
-      color: '#1e293b'
+      color: '#1e293b',
+      maxWidth: '1200px',
+      margin: '0 auto'
     }}>
       {/* ========================================================================
           HEADER: Encabezado con título y botón de logout
@@ -363,18 +379,11 @@ export default function DashboardPage() {
             }}>
               Análisis temporal y geográfico
             </h2>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Desde</label>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} style={inputStyle} />
-              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Hasta</label>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} style={inputStyle} />
-            </div>
           </div>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
             gap: '1.5rem'
           }}>
             {/* Gráfico: Casos en el tiempo */}
@@ -399,22 +408,44 @@ export default function DashboardPage() {
                 title="Casos en el tiempo"
                 type="line"
                 loading={casesLoading || prevCasesLoading}
+                controls={
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap'
+                  }}>
+                    <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Desde</label>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      max={dateTo}
+                      style={{
+                        ...inputStyle,
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.75rem'
+                      }}
+                    />
+                    <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Hasta</label>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      min={dateFrom}
+                      style={{
+                        ...inputStyle,
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.75rem'
+                      }}
+                    />
+                  </div>
+                }
               />
             </div>
 
             {/* Gráfico de Distribución por Comuna */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '0.75rem', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Top</label>
-                <select
-                  value={comunaLimitFilter}
-                  onChange={(e) => setComunaLimitFilter(parseInt(e.target.value))}
-                  style={{ ...inputStyle, cursor: 'pointer' }}
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                </select>
-              </div>
               {comunaError && (
                 <div style={{
                   padding: '0.75rem',
@@ -432,6 +463,70 @@ export default function DashboardPage() {
                 data={comunaData || []}
                 title="Casos por comuna"
                 loading={comunaLoading}
+                controls={
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Tipo de caso</label>
+                      <select
+                        value={caseTypeComunaFilter}
+                        onChange={(e) => setCaseTypeComunaFilter(e.target.value)}
+                        style={{
+                          ...inputStyle,
+                          cursor: 'pointer',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        <option value="all">Todos</option>
+                        <option value="agudo">Agudos</option>
+                        <option value="bajo_control">Bajo control</option>
+                        <option value="gestante">Gestantes</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Sexo</label>
+                      <select
+                        value={sexComunaFilter}
+                        onChange={(e) => setSexComunaFilter(e.target.value)}
+                        style={{
+                          ...inputStyle,
+                          cursor: 'pointer',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        <option value="all">Todos</option>
+                        <option value="F">Femenino</option>
+                        <option value="M">Masculino</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Grupo etario</label>
+                      <select
+                        value={ageGroupComunaFilter}
+                        onChange={(e) => setAgeGroupComunaFilter(e.target.value)}
+                        style={{
+                          ...inputStyle,
+                          cursor: 'pointer',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        <option value="all">Todos</option>
+                        <option value="0_14">0-14</option>
+                        <option value="15_29">15-29</option>
+                        <option value="30_44">30-44</option>
+                        <option value="45_59">45-59</option>
+                        <option value="60_plus">60+</option>
+                      </select>
+                    </div>
+                  </div>
+                }
               />
             </div>
           </div>
@@ -450,17 +545,59 @@ export default function DashboardPage() {
             <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1e293b', letterSpacing: '-0.02em' }}>
               Mapa geográfico
             </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Año</label>
-              <select
-                value={mapYearFilter}
-                onChange={(e) => setMapYearFilter(e.target.value)}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                <option value="all">Todo el tiempo</option>
-                <option value="2025">2025</option>
-                <option value="2026">2026</option>
-              </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Tipo de caso</label>
+                <select
+                  value={caseTypeMapFilter}
+                  onChange={(e) => setCaseTypeMapFilter(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                >
+                  <option value="all">Todos</option>
+                  <option value="agudo">Agudos</option>
+                  <option value="bajo_control">Bajo control</option>
+                  <option value="gestante">Gestantes</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Sexo</label>
+                <select
+                  value={sexMapFilter}
+                  onChange={(e) => setSexMapFilter(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                >
+                  <option value="all">Todos</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Grupo etario</label>
+                <select
+                  value={ageGroupMapFilter}
+                  onChange={(e) => setAgeGroupMapFilter(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                >
+                  <option value="all">Todos</option>
+                  <option value="0_14">0-14</option>
+                  <option value="15_29">15-29</option>
+                  <option value="30_44">30-44</option>
+                  <option value="45_59">45-59</option>
+                  <option value="60_plus">60+</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Año</label>
+                <select
+                  value={mapYearFilter}
+                  onChange={(e) => setMapYearFilter(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                >
+                  <option value="all">Todo el tiempo</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
             </div>
           </div>
           {geoError && (

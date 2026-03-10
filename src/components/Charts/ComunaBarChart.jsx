@@ -21,8 +21,17 @@ import ReactECharts from 'echarts-for-react'
 export default function ComunaBarChart({ 
   data = [], 
   title = 'Distribución por Comuna',
-  loading = false 
+  loading = false,
+  controls = null
 }) {
+  const cardStyle = {
+    background: '#ffffff',
+    borderRadius: '0.75rem',
+    padding: '1.25rem',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+  }
+
   // Ordenar datos de mayor a menor
   const sortedData = useMemo(() => {
     if (!data || data.length === 0) return []
@@ -113,52 +122,72 @@ export default function ComunaBarChart({
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '500px',
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: '0.75rem',
-        color: '#64748b',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-      }}>
-        Cargando gráfico...
+      <div style={cardStyle}>
+        {controls && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}>
+            {controls}
+          </div>
+        )}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '360px',
+          color: '#64748b'
+        }}>
+          Cargando gráfico...
+        </div>
       </div>
     )
   }
 
   if (sortedData.length === 0) {
     return (
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '0.75rem',
-        padding: '1.5rem',
-        border: '1px solid #e2e8f0',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '500px',
-        color: '#64748b',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-      }}>
-        No hay datos disponibles
+      <div style={cardStyle}>
+        {controls && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}>
+            {controls}
+          </div>
+        )}
+        <div style={{
+          padding: '1.5rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '360px',
+          color: '#64748b'
+        }}>
+          No hay datos disponibles
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{
-      background: '#ffffff',
-      borderRadius: '0.75rem',
-      padding: '1.25rem',
-      border: '1px solid #e2e8f0',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-    }}>
+    <div style={cardStyle}>
+      {controls && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          marginBottom: '0.5rem'
+        }}>
+          {controls}
+        </div>
+      )}
       <ReactECharts
         option={option}
-        style={{ height: '500px', width: '100%' }}
+        style={{ height: '400px', width: '100%' }}
         opts={{ renderer: 'svg' }}
       />
     </div>

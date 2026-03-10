@@ -23,7 +23,8 @@ export default function TendencyChart({
   prevCasesData = [],
   title = 'Casos en el tiempo',
   type = 'line',
-  loading = false
+  loading = false,
+  controls = null
 }) {
   const chartData = useMemo(() => {
     const allMonths = new Set()
@@ -151,51 +152,79 @@ export default function TendencyChart({
     }
   }, [chartData, title, type])
 
+  const cardStyle = {
+    background: '#ffffff',
+    borderRadius: '0.75rem',
+    padding: '1.25rem',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+  }
+
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '400px',
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: '0.75rem',
-        color: '#64748b',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-      }}>
-        Cargando gráfico...
+      <div style={cardStyle}>
+        {controls && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}>
+            {controls}
+          </div>
+        )}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '360px',
+          color: '#64748b'
+        }}>
+          Cargando gráfico...
+        </div>
       </div>
     )
   }
 
   if (chartData.months.length === 0) {
     return (
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '0.75rem',
-        padding: '1.5rem',
-        border: '1px solid #e2e8f0',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '400px',
-        color: '#64748b',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-      }}>
-        No hay datos de casos en el período seleccionado
+      <div style={cardStyle}>
+        {controls && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}>
+            {controls}
+          </div>
+        )}
+        <div style={{
+          padding: '1.5rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '360px',
+          color: '#64748b'
+        }}>
+          No hay datos de casos en el período seleccionado
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{
-      background: '#ffffff',
-      borderRadius: '0.75rem',
-      padding: '1.25rem',
-      border: '1px solid #e2e8f0',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-    }}>
+    <div style={cardStyle}>
+      {controls && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: '0.5rem'
+        }}>
+          {controls}
+        </div>
+      )}
       <ReactECharts
         option={option}
         style={{ height: '400px', width: '100%' }}
