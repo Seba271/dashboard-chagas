@@ -187,50 +187,26 @@ export default function LoginPage() {
   
   // Si ya verificamos la sesión y no hay sesión activa, mostramos el formulario
   return (
-    // Contenedor principal: centra el formulario en la pantalla
-    <div style={{
-      // Flexbox para centrar
-      display: 'flex',
-      // Centrar horizontalmente
-      justifyContent: 'center',
-      // Centrar verticalmente
-      alignItems: 'center',
-      // Altura mínima: pantalla completa
-      minHeight: '100vh',
-      // Padding para que no toque los bordes en móviles
-      padding: '1rem'
-    }}>
-      {/* Tarjeta del formulario */}
-      <div style={{
-        // Fondo blanco
-        background: 'white',
-        // Bordes redondeados
-        borderRadius: '1rem',
-        // Espaciado interno
-        padding: '2.5rem',
-        // Sombra elegante
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-        // Ancho completo
-        width: '100%',
-        // Ancho máximo (se ve bien en móviles y desktop)
-        maxWidth: '400px'
-      }}>
-        {/* Título del formulario */}
+    <div className="login-page">
+      <div
+        className="login-card"
+        style={{
+          background: 'white',
+          borderRadius: '1rem',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}
+      >
         <h1 style={{
-          fontSize: '2rem',
           fontWeight: 'bold',
-          marginBottom: '0.5rem',
           color: '#1f2937',
           textAlign: 'center'
         }}>
           Dashboard Chagas
         </h1>
-        
-        {/* Subtítulo */}
-        <p style={{
+
+        <p className="login-subtitle" style={{
           color: '#6b7280',
           textAlign: 'center',
-          marginBottom: '2rem',
           fontSize: '0.875rem'
         }}>
           Inicia sesión para acceder al sistema
@@ -259,23 +235,17 @@ export default function LoginPage() {
             <input
               id="email"
               type="email"
-              // Valor controlado por React (email state)
               value={email}
-              // Actualiza email cuando el usuario escribe
               onChange={(e) => setEmail(e.target.value)}
-              // Campo obligatorio (validación HTML5)
               required
-              // Deshabilitar mientras se procesa el login
               disabled={loading}
               style={{
                 width: '100%',
-                padding: '0.75rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '0.5rem',
-                fontSize: '1rem',
-                // Quitar el borde azul por defecto
                 outline: 'none',
                 transition: 'border-color 0.2s',
+                boxSizing: 'border-box'
               }}
               // Cambiar color del borde cuando el usuario hace foco en el input
               onFocus={(e) => e.target.style.borderColor = '#667eea'}
@@ -302,22 +272,17 @@ export default function LoginPage() {
             <input
               id="password"
               type="password"
-              // Valor controlado por React
               value={password}
-              // Actualiza password cuando el usuario escribe
               onChange={(e) => setPassword(e.target.value)}
-              // Campo obligatorio
               required
-              // Deshabilitar mientras se procesa
               disabled={loading}
               style={{
                 width: '100%',
-                padding: '0.75rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '0.5rem',
-                fontSize: '1rem',
                 outline: 'none',
                 transition: 'border-color 0.2s',
+                boxSizing: 'border-box'
               }}
               onFocus={(e) => e.target.style.borderColor = '#667eea'}
               onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
@@ -345,22 +310,17 @@ export default function LoginPage() {
           {/* Botón de envío del formulario - type="submit" hace que se ejecute onSubmit del form */}
           <button
             type="submit"
-            // Deshabilitar mientras se procesa (evita doble envío)
             disabled={loading}
             style={{
               width: '100%',
-              padding: '0.75rem',
-              // Cambiar color según el estado: gris si está cargando, azul si no
               backgroundColor: loading ? '#9ca3af' : '#667eea',
               color: 'white',
               border: 'none',
               borderRadius: '0.5rem',
-              fontSize: '1rem',
               fontWeight: '500',
-              // Cambiar cursor: "no permitido" si está cargando, "pointer" si no
               cursor: loading ? 'not-allowed' : 'pointer',
-              // Transición suave al cambiar color
               transition: 'background-color 0.2s',
+              boxSizing: 'border-box'
             }}
             // Efecto hover: oscurecer el botón cuando el mouse pasa por encima
             onMouseEnter={(e) => {

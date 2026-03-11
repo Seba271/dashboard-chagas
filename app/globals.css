@@ -147,4 +147,236 @@ a {
   --dashboard-input-border: #cbd5e1;
 }
 
+/* ============================================================================
+   RESPONSIVE: Dashboard y vistas móvil / tablet / desktop
+   ============================================================================ */
+
+/* Contenedor principal del dashboard */
+.dashboard-page {
+  padding: 0.75rem 0.5rem !important;
+  max-width: 100% !important;
+}
+@media (min-width: 640px) {
+  .dashboard-page {
+    padding: 1rem 1rem !important;
+  }
+}
+@media (min-width: 1024px) {
+  .dashboard-page {
+    padding: 1.5rem 1rem !important;
+    max-width: 1200px !important;
+  }
+}
+
+/* Header: en móvil se apila título y usuario + botón */
+.dashboard-header {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 1rem !important;
+  padding: 1rem !important;
+}
+@media (min-width: 640px) {
+  .dashboard-header {
+    flex-direction: row !important;
+    align-items: center !important;
+    padding: 1.25rem 1.5rem !important;
+  }
+}
+
+.dashboard-header-title h1 {
+  font-size: 1.25rem !important;
+}
+@media (min-width: 640px) {
+  .dashboard-header-title h1 {
+    font-size: 1.75rem !important;
+  }
+}
+
+.dashboard-header-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.75rem !important;
+}
+
+/* Secciones: títulos más compactos en móvil */
+.section-title {
+  font-size: 1rem !important;
+  margin-bottom: 0.75rem !important;
+}
+@media (min-width: 640px) {
+  .section-title {
+    font-size: 1.25rem !important;
+    margin-bottom: 1rem !important;
+  }
+}
+
+/* Grid de KPIs: 2 columnas en móvil, más en pantallas grandes */
+.kpi-grid {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 0.5rem !important;
+}
+@media (min-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+}
+@media (min-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    gap: 1rem !important;
+  }
+}
+
+/* Grid de gráficos: una columna en móvil */
+.charts-grid {
+  grid-template-columns: 1fr !important;
+  gap: 1rem !important;
+}
+@media (min-width: 640px) {
+  .charts-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+    gap: 1.5rem !important;
+  }
+}
+
+/* Filtros del mapa: se apilan en móvil */
+.map-filters {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0.5rem !important;
+}
+@media (min-width: 640px) {
+  .map-filters {
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+  }
+}
+
+/* Contenedor del mapa: altura menor en móvil para no ocupar toda la pantalla */
+.map-container {
+  height: 320px !important;
+}
+.map-container > div {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.map-container > div > div:first-of-type {
+  flex: 1 !important;
+  min-height: 0 !important;
+}
+.map-container > div > div:first-of-type > div {
+  height: 100% !important;
+}
+@media (min-width: 640px) {
+  .map-container {
+    height: 380px !important;
+  }
+}
+@media (min-width: 768px) {
+  .map-container {
+    height: 420px !important;
+  }
+}
+
+/* Botones e inputs: área táctil mínima en móvil */
+@media (max-width: 639px) {
+  .dashboard-header-actions button {
+    min-height: 44px;
+    padding: 0.6rem 1rem !important;
+  }
+}
+
+/* KPI cards: menos padding en móvil */
+@media (max-width: 479px) {
+  .kpi-card {
+    padding: 0.75rem !important;
+  }
+  .kpi-card h3 {
+    font-size: 0.7rem !important;
+  }
+  .kpi-card > div:last-of-type {
+    font-size: 1.35rem !important;
+  }
+}
+
+/* ============================================================================
+   LOGIN: responsivo móvil / tablet / desktop
+   ============================================================================ */
+
+.login-page {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  padding: 0.75rem !important;
+  box-sizing: border-box !important;
+}
+@media (min-width: 640px) {
+  .login-page {
+    padding: 1.5rem !important;
+  }
+}
+
+.login-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 1.25rem !important;
+  border-radius: 1rem !important;
+  box-sizing: border-box !important;
+}
+.login-card h1 {
+  font-size: 1.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+.login-card .login-subtitle {
+  margin-bottom: 1.5rem !important;
+}
+@media (min-width: 480px) {
+  .login-card {
+    max-width: 400px !important;
+    padding: 2rem !important;
+  }
+  .login-card h1 {
+    font-size: 1.75rem !important;
+  }
+  .login-card .login-subtitle {
+    margin-bottom: 1.75rem !important;
+  }
+}
+@media (min-width: 640px) {
+  .login-card {
+    padding: 2.5rem !important;
+  }
+  .login-card h1 {
+    font-size: 2rem !important;
+  }
+  .login-card .login-subtitle {
+    margin-bottom: 2rem !important;
+  }
+}
+
+/* Inputs y botón: área táctil cómoda en móvil, evita zoom en iOS */
+.login-card input {
+  min-height: 48px !important;
+  padding: 0.75rem 1rem !important;
+  font-size: 16px !important; /* evita zoom automático en iOS */
+  box-sizing: border-box !important;
+}
+.login-card button[type="submit"] {
+  min-height: 48px !important;
+  padding: 0.85rem 1rem !important;
+  font-size: 1rem !important;
+}
+@media (min-width: 640px) {
+  .login-card input {
+    padding: 0.75rem !important;
+  }
+}
+
 

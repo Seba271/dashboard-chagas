@@ -20,6 +20,7 @@ export default function KpiCard({
 
   return (
     <div
+      className="kpi-card"
       style={{
         background: '#ffffff',
         borderRadius: '0.75rem',

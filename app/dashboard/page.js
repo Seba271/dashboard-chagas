@@ -222,40 +222,43 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      padding: '1.5rem 1rem',
-      background: '#f1f5f9',
-      color: '#1e293b',
-      maxWidth: '1200px',
-      margin: '0 auto'
-    }}>
+    <div
+      className="dashboard-page"
+      style={{
+        minHeight: '100vh',
+        background: '#f1f5f9',
+        color: '#1e293b',
+        margin: '0 auto'
+      }}
+    >
       {/* ========================================================================
           HEADER: Encabezado con título y botón de logout
           ======================================================================== */}
-      <header style={{
-        ...cardStyle,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '2rem',
-        padding: '1.25rem 1.5rem'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.25rem', color: '#1e293b' }}>
+      <header
+        className="dashboard-header"
+        style={{
+          ...cardStyle,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '2rem'
+        }}
+      >
+        <div className="dashboard-header-title">
+          <h1 style={{ fontWeight: '700', marginBottom: '0.25rem', color: '#1e293b' }}>
             Dashboard Chagas
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
             Región de Coquimbo — Indicadores Epidemiológicos
           </p>
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+
+        <div className="dashboard-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ textAlign: 'right' }}>
             <p style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Usuario</p>
             <p style={{ fontWeight: '500', fontSize: '0.875rem', color: '#1e293b' }}>{user?.email || 'N/A'}</p>
           </div>
-          
+
           <button
             onClick={handleLogout}
             style={{
@@ -289,13 +292,14 @@ export default function DashboardPage() {
       <main>
         {/* Sección de KPIs */}
         <section style={{ marginBottom: '2rem' }}>
-          <h2 style={{
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            marginBottom: '1rem',
-            color: '#1e293b',
-            letterSpacing: '-0.02em'
-          }}>
+          <h2
+            className="section-title"
+            style={{
+              fontWeight: '600',
+              color: '#1e293b',
+              letterSpacing: '-0.02em'
+            }}
+          >
             Indicadores principales
           </h2>
           
@@ -313,11 +317,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '1rem'
-          }}>
+          <div className="kpi-grid" style={{ display: 'grid', gap: '1rem' }}>
             <KpiCard title="Total casos (Chagas)" value={kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0} icon="👥" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Total Exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Bajo Control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
@@ -363,29 +363,20 @@ export default function DashboardPage() {
 
         {/* Sección de Gráficos */}
         <section style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <h2 style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#1e293b',
-              letterSpacing: '-0.02em'
-            }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <h2
+              className="section-title"
+              style={{
+                fontWeight: '600',
+                color: '#1e293b',
+                letterSpacing: '-0.02em'
+              }}
+            >
               Análisis temporal y geográfico
             </h2>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '1.5rem'
-          }}>
+          <div className="charts-grid" style={{ display: 'grid', gap: '1.5rem' }}>
             {/* Gráfico: Casos en el tiempo */}
             <div>
               {(casesError || prevCasesError) && (
@@ -534,18 +525,14 @@ export default function DashboardPage() {
 
         {/* Sección de Mapa */}
         <section style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1e293b', letterSpacing: '-0.02em' }}>
+          <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <h2
+              className="section-title"
+              style={{ fontWeight: '600', color: '#1e293b', letterSpacing: '-0.02em' }}
+            >
               Mapa geográfico
             </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div className="map-filters" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Tipo de caso</label>
                 <select
@@ -614,7 +601,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <SimpleMap points={geoPoints || []} loading={geoLoading} />
+          <div className="map-container">
+            <SimpleMap points={geoPoints || []} loading={geoLoading} />
+          </div>
         </section>
       </main>
     </div>
