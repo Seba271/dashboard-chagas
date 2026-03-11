@@ -313,11 +313,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '1rem'
-          }}>
+          <div className="kpiGrid">
             <KpiCard title="Total casos (Chagas)" value={kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0} icon="👥" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Total Exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
             <KpiCard title="Bajo Control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
@@ -409,35 +405,22 @@ export default function DashboardPage() {
                 type="line"
                 loading={casesLoading || prevCasesLoading}
                 controls={
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    flexWrap: 'wrap'
-                  }}>
-                    <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Desde</label>
+                  <div className="chartControls chartControlsDates">
+                    <label className="chartControlsLabel">Desde</label>
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
                       max={dateTo}
-                      style={{
-                        ...inputStyle,
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.75rem'
-                      }}
+                      className="chartControlsInput"
                     />
-                    <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Hasta</label>
+                    <label className="chartControlsLabel">Hasta</label>
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
                       min={dateFrom}
-                      style={{
-                        ...inputStyle,
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.75rem'
-                      }}
+                      className="chartControlsInput"
                     />
                   </div>
                 }
@@ -464,23 +447,13 @@ export default function DashboardPage() {
                 title="Casos por comuna"
                 loading={comunaLoading}
                 controls={
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    flexWrap: 'wrap'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Tipo de caso</label>
+                  <div className="chartControls chartControlsFilters">
+                    <div className="chartControlsGroup">
+                      <label className="chartControlsLabel">Tipo de caso</label>
                       <select
                         value={caseTypeComunaFilter}
                         onChange={(e) => setCaseTypeComunaFilter(e.target.value)}
-                        style={{
-                          ...inputStyle,
-                          cursor: 'pointer',
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem'
-                        }}
+                        className="chartControlsSelect"
                       >
                         <option value="all">Todos</option>
                         <option value="agudo">Agudos</option>
@@ -488,34 +461,24 @@ export default function DashboardPage() {
                         <option value="gestante">Gestantes</option>
                       </select>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Sexo</label>
+                    <div className="chartControlsGroup">
+                      <label className="chartControlsLabel">Sexo</label>
                       <select
                         value={sexComunaFilter}
                         onChange={(e) => setSexComunaFilter(e.target.value)}
-                        style={{
-                          ...inputStyle,
-                          cursor: 'pointer',
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem'
-                        }}
+                        className="chartControlsSelect"
                       >
                         <option value="all">Todos</option>
                         <option value="F">Femenino</option>
                         <option value="M">Masculino</option>
                       </select>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <label style={{ fontSize: '0.75rem', color: '#64748b' }}>Grupo etario</label>
+                    <div className="chartControlsGroup">
+                      <label className="chartControlsLabel">Grupo etario</label>
                       <select
                         value={ageGroupComunaFilter}
                         onChange={(e) => setAgeGroupComunaFilter(e.target.value)}
-                        style={{
-                          ...inputStyle,
-                          cursor: 'pointer',
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem'
-                        }}
+                        className="chartControlsSelect"
                       >
                         <option value="all">Todos</option>
                         <option value="0_14">0-14</option>

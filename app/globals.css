@@ -147,4 +147,118 @@ a {
   --dashboard-input-border: #cbd5e1;
 }
 
+/* ============================================================================
+   KPI GRID (responsivo)
+   ============================================================================ */
+
+.kpiGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+@media (min-width: 768px) {
+  .kpiGrid {
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+/* ============================================================================
+   Controles de gráficos (responsivo)
+   ============================================================================ */
+
+.chartControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.chartControlsGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.chartControlsLabel {
+  font-size: 0.75rem;
+  color: var(--dashboard-text-muted);
+  white-space: nowrap;
+}
+
+.chartControlsInput,
+.chartControlsSelect {
+  padding: 0.25rem 0.5rem;
+  background-color: #ffffff;
+  color: var(--dashboard-text);
+  border: 1px solid var(--dashboard-input-border);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.chartControlsSelect {
+  cursor: pointer;
+}
+
+/* En móviles: inputs más chicos y ordenados */
+@media (max-width: 420px) {
+  .chartControls {
+    justify-content: center;
+    gap: 0.4rem 0.5rem;
+  }
+
+  /* Para filtros (selects): 2 columnas y el 3ro centrado abajo */
+  .chartControlsFilters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    justify-items: center;
+    width: 100%;
+  }
+
+  .chartControlsFilters .chartControlsGroup {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .chartControlsFilters .chartControlsGroup:nth-child(3) {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: auto;
+  }
+
+  .chartControlsFilters .chartControlsSelect {
+    max-width: 9.5rem;
+  }
+
+  /* Para rangos de fechas: 2 filas ordenadas (label + input) */
+  .chartControlsDates {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    justify-items: end;
+    width: 100%;
+  }
+
+  .chartControlsDates .chartControlsLabel {
+    justify-self: end;
+  }
+
+  .chartControlsDates .chartControlsInput[type="date"] {
+    width: 100%;
+    max-width: 10.5rem;
+  }
+
+  .chartControlsInput,
+  .chartControlsSelect {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.45rem;
+  }
+}
+
 
