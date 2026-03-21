@@ -10,7 +10,8 @@ export default function KpiCard({
   value, 
   icon = '📊', 
   color = '#0d9488',
-  loading = false 
+  loading = false,
+  subtitle = null
 }) {
   const formatValue = (val) => {
     if (val === null || val === undefined) return 'N/A'
@@ -76,6 +77,17 @@ export default function KpiCard({
         borderRadius: '2px',
         width: '40%'
       }} />
+      {subtitle && (
+        <p style={{
+          marginTop: '0.65rem',
+          fontSize: '0.6875rem',
+          color: '#64748b',
+          lineHeight: 1.35,
+          fontWeight: '400'
+        }}>
+          {subtitle}
+        </p>
+      )}
     </div>
   )
 }

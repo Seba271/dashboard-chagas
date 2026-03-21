@@ -1,24 +1,10 @@
 /**
- * ============================================================================
- * PÁGINA DE DASHBOARD (PROTEGIDA) - app/dashboard/page.js
- * ============================================================================
- * 
- * Dashboard principal con visualizaciones de indicadores epidemiológicos.
- * REQUIERE AUTENTICACIÓN.
- * 
- * FUNCIONALIDADES:
- * 1. Verifica autenticación (redirige a /login si no hay sesión)
- * 2. Muestra KPIs en tarjetas (consumiendo RPC get_kpi_summary)
- * 3. Gráfico de tendencia temporal con 2 series (Exámenes y Notificaciones)
- * 4. Gráfico de distribución por comuna (datos reales)
- * 5. Mapa interactivo de la Región de Coquimbo (puntos reales con categorías)
- * 6. Filtros para ajustar períodos y límites
- * 7. Permite cerrar sesión
+ * Dashboard Chagas — orden: filtros → KPIs → análisis → mapa → seguimiento clínico.
  */
 
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
@@ -26,76 +12,129 @@ import { useKpiSummary } from '@/src/hooks/useKpiSummary'
 import { useCasesByDateRange } from '@/src/hooks/useCasesByDateRange'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
 import { useMapPoints } from '@/src/hooks/useMapPoints'
+import { exportCasesSeriesCsv, exportComunaRankingCsv } from '@/lib/exportDashboardData'
+import { schedulePrintChartResize } from '@/lib/printEchartsResize'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
+import ComunaRankingTable from '@/src/components/Charts/ComunaRankingTable'
+import DashboardGlobalFilters from '@/src/components/DashboardGlobalFilters'
+import FollowupAlertsSection from '@/src/components/FollowupAlertsSection'
 import dynamic from 'next/dynamic'
 
-// Importar mapa dinámicamente (Leaflet requiere cliente)
 const SimpleMap = dynamic(
   () => import('@/src/components/Map/SimpleMap'),
-  { 
+  {
     ssr: false,
     loading: () => (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '420px',
-        background: '#f8fafc',
-        border: '1px solid #e2e8f0',
-        borderRadius: '0.75rem',
-        color: '#64748b'
-      }}>
-        Cargando mapa...
-      </div>
+      <div className="dashboardMapLoading">Cargando mapa...</div>
     )
   }
 )
 
-/**
- * Componente principal del Dashboard
- */
+function getDefaultDates() {
+  const today = new Date()
+  const from = new Date(today)
+  from.setMonth(from.getMonth() - 12)
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10)
+  }
+}
+
+function comunaMatches(selected, comuna) {
+  if (!selected || !String(selected).trim()) return true
+  return (comuna || '').trim().toLowerCase() === String(selected).trim().toLowerCase()
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { user, loading: sessionLoading, error: sessionError } = useSession()
-  
-  // Rango de fechas por defecto: últimos 12 meses
-  const getDefaultDates = () => {
-    const today = new Date()
-    const from = new Date(today)
-    from.setMonth(from.getMonth() - 12)
-    return {
-      from: from.toISOString().slice(0, 10),
-      to: today.toISOString().slice(0, 10)
-    }
-  }
+
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
-  const [mapYearFilter, setMapYearFilter] = useState('all')
-  const [caseTypeComunaFilter, setCaseTypeComunaFilter] = useState('all')
-  const [caseTypeMapFilter, setCaseTypeMapFilter] = useState('all')
-  const [sexComunaFilter, setSexComunaFilter] = useState('all')
-  const [sexMapFilter, setSexMapFilter] = useState('all')
-  const [ageGroupComunaFilter, setAgeGroupComunaFilter] = useState('all')
-  const [ageGroupMapFilter, setAgeGroupMapFilter] = useState('all')
+  const [globalYear, setGlobalYear] = useState('all')
+  const [globalComuna, setGlobalComuna] = useState('')
+  const [caseTypeFilter, setCaseTypeFilter] = useState('all')
+  const [sexFilter, setSexFilter] = useState('all')
+  const [ageGroupFilter, setAgeGroupFilter] = useState('all')
 
-  // Hooks para obtener datos
   const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
   const { data: casesData, loading: casesLoading, error: casesError } = useCasesByDateRange(dateFrom, dateTo)
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(
-    caseTypeComunaFilter,
-    sexComunaFilter,
-    ageGroupComunaFilter
-  )
-  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(
-    mapYearFilter,
-    caseTypeMapFilter,
-    sexMapFilter,
-    ageGroupMapFilter
+    caseTypeFilter,
+    sexFilter,
+    ageGroupFilter
   )
 
-  // Rango año anterior para comparación interanual (casos)
+  // Para recalcular porcentajes cuando hay comuna seleccionada.
+  // get_kpi_summary() no recibe filtros, por eso usamos get_counts_by_comuna por tipo.
+  const { data: comunaCountsAll, loading: comunaCountsAllLoading, error: comunaCountsAllError } = useCountsByComuna(
+    'all',
+    sexFilter,
+    ageGroupFilter
+  )
+  const { data: comunaCountsBajo, loading: comunaCountsBajoLoading, error: comunaCountsBajoError } = useCountsByComuna(
+    'bajo_control',
+    sexFilter,
+    ageGroupFilter
+  )
+  const { data: comunaCountsAgudo, loading: comunaCountsAgudoLoading, error: comunaCountsAgudoError } = useCountsByComuna(
+    'agudo',
+    sexFilter,
+    ageGroupFilter
+  )
+  const { data: comunaCountsGestantes, loading: comunaCountsGestantesLoading, error: comunaCountsGestantesError } = useCountsByComuna(
+    'gestante',
+    sexFilter,
+    ageGroupFilter
+  )
+
+  const mapYearFilter = globalYear === 'all' ? 'all' : globalYear
+  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(
+    mapYearFilter,
+    caseTypeFilter,
+    sexFilter,
+    ageGroupFilter
+  )
+
+  useEffect(() => {
+    if (globalYear === 'all') {
+      const d = getDefaultDates()
+      setDateFrom(d.from)
+      setDateTo(d.to)
+      return
+    }
+    const y = parseInt(globalYear, 10)
+    if (Number.isNaN(y)) return
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+    const endOfYear = new Date(y, 11, 31)
+    const cap = today < endOfYear ? today : endOfYear
+    setDateFrom(`${y}-01-01`)
+    setDateTo(cap.toISOString().slice(0, 10))
+  }, [globalYear])
+
+  const resetFilters = useCallback(() => {
+    setGlobalYear('all')
+    setGlobalComuna('')
+    setCaseTypeFilter('all')
+    setSexFilter('all')
+    setAgeGroupFilter('all')
+  }, [])
+
+  /** ECharts debe redimensionarse al imprimir (layout distinto al de pantalla). */
+  useEffect(() => {
+    const onBeforePrint = () => schedulePrintChartResize()
+    const onAfterPrint = () => schedulePrintChartResize()
+    window.addEventListener('beforeprint', onBeforePrint)
+    window.addEventListener('afterprint', onAfterPrint)
+    return () => {
+      window.removeEventListener('beforeprint', onBeforePrint)
+      window.removeEventListener('afterprint', onAfterPrint)
+    }
+  }, [])
+
   const { prevFrom, prevTo } = useMemo(() => {
     if (!dateFrom || !dateTo) return { prevFrom: null, prevTo: null }
     const from = new Date(dateFrom)
@@ -106,20 +145,112 @@ export default function DashboardPage() {
     toPrev.setFullYear(toPrev.getFullYear() - 1)
     return { prevFrom: fromPrev.toISOString().slice(0, 10), prevTo: toPrev.toISOString().slice(0, 10) }
   }, [dateFrom, dateTo])
-  const { data: prevCasesData, loading: prevCasesLoading, error: prevCasesError } = useCasesByDateRange(prevFrom, prevTo)
 
-  // ============================================================================
-  // FUNCIÓN: MANEJAR EL CIERRE DE SESIÓN
-  // ============================================================================
-  
+  const { data: prevCasesData, loading: prevCasesLoading, error: prevCasesError } = useCasesByDateRange(
+    prevFrom,
+    prevTo
+  )
+
+  const comunaOptions = useMemo(() => {
+    if (!comunaData?.length) return []
+    const set = new Set(comunaData.map((r) => r.comuna).filter(Boolean))
+    return [...set].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [comunaData])
+
+  const comunaDataFiltered = useMemo(() => {
+    if (!comunaData?.length) return []
+    if (!globalComuna.trim()) return comunaData
+    return comunaData.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [comunaData, globalComuna])
+
+  const geoFiltered = useMemo(() => {
+    if (!geoPoints?.length) return []
+    if (!globalComuna.trim()) return geoPoints
+    return geoPoints.filter((p) => comunaMatches(globalComuna, p.comuna))
+  }, [geoPoints, globalComuna])
+
+  const nuevosEsteMes = useMemo(
+    () => geoFiltered.filter((p) => p.isNewCase).length,
+    [geoFiltered]
+  )
+
+  const totalCasosRegion = kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0
+  const totalCasosDisplay = useMemo(() => {
+    if (!globalComuna.trim()) return totalCasosRegion
+    return comunaDataFiltered.reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [globalComuna, comunaDataFiltered, totalCasosRegion])
+
+  const refRegional = !!globalComuna.trim()
+
+  const selectedCountsAll = useMemo(() => {
+    if (!refRegional) return []
+    if (!comunaCountsAll?.length) return []
+    return comunaCountsAll.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [refRegional, comunaCountsAll, globalComuna])
+
+  const selectedCountsBajo = useMemo(() => {
+    if (!refRegional) return []
+    if (!comunaCountsBajo?.length) return []
+    return comunaCountsBajo.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [refRegional, comunaCountsBajo, globalComuna])
+
+  const selectedCountsAgudo = useMemo(() => {
+    if (!refRegional) return []
+    if (!comunaCountsAgudo?.length) return []
+    return comunaCountsAgudo.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [refRegional, comunaCountsAgudo, globalComuna])
+
+  const selectedCountsGestantes = useMemo(() => {
+    if (!refRegional) return []
+    if (!comunaCountsGestantes?.length) return []
+    return comunaCountsGestantes.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [refRegional, comunaCountsGestantes, globalComuna])
+
+  const totalCasosForPercent = useMemo(() => {
+    // Usamos el mismo total que muestra el KPI "Total casos (Chagas)" cuando hay comuna seleccionada,
+    // para evitar descalces entre secciones.
+    if (!refRegional) return totalCasosRegion
+    return totalCasosDisplay
+  }, [refRegional, totalCasosRegion, totalCasosDisplay])
+
+  const bajoForPercent = useMemo(() => {
+    if (!refRegional) return kpiData?.total_bajo_control ?? 0
+    return selectedCountsBajo.reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [refRegional, kpiData?.total_bajo_control, selectedCountsBajo])
+
+  const agudoForPercent = useMemo(() => {
+    if (!refRegional) return kpiData?.total_agudo ?? 0
+    return selectedCountsAgudo.reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [refRegional, kpiData?.total_agudo, selectedCountsAgudo])
+
+  const gestantesForPercent = useMemo(() => {
+    if (!refRegional) return kpiData?.total_gestantes ?? 0
+    return selectedCountsGestantes.reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [refRegional, kpiData?.total_gestantes, selectedCountsGestantes])
+
+  const loadingPercentages = refRegional
+    ? comunaLoading ||
+      comunaCountsAllLoading ||
+      comunaCountsBajoLoading ||
+      comunaCountsAgudoLoading ||
+      comunaCountsGestantesLoading
+    : kpiLoading
+
+  const kpiPercentages = useMemo(
+    () => ({
+      pctBajoControl: totalCasosForPercent ? (bajoForPercent / totalCasosForPercent) * 100 : 0,
+      pctAgudo: totalCasosForPercent ? (agudoForPercent / totalCasosForPercent) * 100 : 0,
+      pctGestantes: totalCasosForPercent ? (gestantesForPercent / totalCasosForPercent) * 100 : 0
+    }),
+    [totalCasosForPercent, bajoForPercent, agudoForPercent, gestantesForPercent]
+  )
+
   const handleLogout = async () => {
     try {
       const supabase = createSupabaseClient()
       const { error } = await supabase.auth.signOut()
-      
-      if (error) {
-        console.error('Error al cerrar sesión:', error)
-      } else {
+      if (error) console.error('Error al cerrar sesión:', error)
+      else {
         router.push('/login')
         router.refresh()
       }
@@ -128,60 +259,20 @@ export default function DashboardPage() {
     }
   }
 
-  // ============================================================================
-  // RENDERIZADO CONDICIONAL: ESTADO DE CARGA
-  // ============================================================================
-  
   if (sessionLoading) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        color: '#64748b',
-        background: '#f1f5f9'
-      }}>
-        <div style={{ fontSize: '1.25rem' }}>Cargando dashboard...</div>
+      <div className="dashboardStateScreen">
+        <p>Cargando dashboard...</p>
       </div>
     )
   }
 
-  // ============================================================================
-  // RENDERIZADO CONDICIONAL: ESTADO DE ERROR (SIN USUARIO)
-  // ============================================================================
-  
   if (sessionError && !user) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        padding: '1rem'
-      }}>
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '1rem',
-          padding: '2rem',
-          maxWidth: '500px',
-          textAlign: 'center',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
-          border: '1px solid #e2e8f0'
-        }}>
-          <p style={{ color: '#dc2626', marginBottom: '1rem' }}>{sessionError}</p>
-          <button
-            onClick={() => router.push('/login')}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: '#0d9488',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
+      <div className="dashboardStateScreen">
+        <div className="dashboardStateCard">
+          <p className="dashboardStateError">{sessionError}</p>
+          <button type="button" className="dashboardStateBtnPrimary" onClick={() => router.push('/login')}>
             Ir a Login
           </button>
         </div>
@@ -189,213 +280,206 @@ export default function DashboardPage() {
     )
   }
 
-  // ============================================================================
-  // RENDERIZADO: CONTENIDO PRINCIPAL DEL DASHBOARD
-  // ============================================================================
-  // Base para %: solo personas con Chagas (casos), no el total de persona
-  const totalCasos = kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0
-  const kpiPercentages = {
-    pctBajoControl: totalCasos && kpiData?.total_bajo_control != null
-      ? (kpiData.total_bajo_control / totalCasos) * 100
-      : 0,
-    pctAgudo: totalCasos && kpiData?.total_agudo != null
-      ? (kpiData.total_agudo / totalCasos) * 100
-      : 0,
-    pctGestantes: totalCasos && kpiData?.total_gestantes != null
-      ? (kpiData.total_gestantes / totalCasos) * 100
-      : 0
-  }
-
-  const cardStyle = {
-    background: '#ffffff',
-    borderRadius: '0.75rem',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-  }
-  const inputStyle = {
-    padding: '0.5rem 0.75rem',
-    backgroundColor: '#ffffff',
-    color: '#1e293b',
-    border: '1px solid #cbd5e1',
-    borderRadius: '0.5rem',
-    fontSize: '0.875rem'
-  }
-
   return (
-    <div style={{
-      minHeight: '100vh',
-      padding: '1.5rem 1rem',
-      background: '#f1f5f9',
-      color: '#1e293b',
-      maxWidth: '1200px',
-      margin: '0 auto'
-    }}>
-      {/* ========================================================================
-          HEADER: Encabezado con título y botón de logout
-          ======================================================================== */}
-      <header style={{
-        ...cardStyle,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '2rem',
-        padding: '1.25rem 1.5rem'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.25rem', color: '#1e293b' }}>
-            Dashboard Chagas
-          </h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            Región de Coquimbo — Indicadores Epidemiológicos
-          </p>
+    <div className="dashboard-shell dashboardPageRoot">
+      <div className="print-only printHeader">
+        <h1>Dashboard Chagas — Resumen</h1>
+        <p>{new Date().toLocaleString('es-CL', { dateStyle: 'long', timeStyle: 'short' })}</p>
+      </div>
+
+      <header className="dashboardPageHeader no-print">
+        <div className="dashboardPageHeaderTitles">
+          <h1>Dashboard Chagas</h1>
+          <p>Región de Coquimbo — Indicadores epidemiológicos</p>
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Usuario</p>
-            <p style={{ fontWeight: '500', fontSize: '0.875rem', color: '#1e293b' }}>{user?.email || 'N/A'}</p>
-          </div>
-          
+        <div className="dashboardPageHeaderActions">
           <button
-            onClick={handleLogout}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#ffffff',
-              color: '#0d9488',
-              border: '1px solid #0d9488',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: '500',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = '#0d9488'
-              e.target.style.color = '#ffffff'
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = '#ffffff'
-              e.target.style.color = '#0d9488'
-            }}
+            type="button"
+            className="dashboardPrintBtn"
+            onClick={() => window.print()}
+            aria-label="Imprimir resumen del dashboard"
           >
+            Imprimir resumen
+          </button>
+          <div className="dashboardUserBlock">
+            <span>Usuario</span>
+            <strong>{user?.email || 'N/A'}</strong>
+          </div>
+          <button type="button" className="dashboardLogoutBtn" onClick={handleLogout} aria-label="Cerrar sesión">
             Cerrar sesión
           </button>
         </div>
       </header>
 
-      {/* ========================================================================
-          MAIN: Contenido principal del dashboard
-          ======================================================================== */}
-      <main>
-        {/* Sección de KPIs */}
-        <section style={{ marginBottom: '2rem' }}>
-          <h2 style={{
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            marginBottom: '1rem',
-            color: '#1e293b',
-            letterSpacing: '-0.02em'
-          }}>
-            Indicadores principales
-          </h2>
-          
-          {kpiError && (
-            <div style={{
-              padding: '1rem',
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '0.5rem',
-              color: '#dc2626',
-              marginBottom: '1rem',
-              fontSize: '0.875rem'
-            }}>
-              Error al cargar KPIs: {kpiError}
-            </div>
+      <main className="dashboardMain">
+        {/* 1. Filtros */}
+        <DashboardGlobalFilters
+          globalYear={globalYear}
+          onGlobalYearChange={setGlobalYear}
+          globalComuna={globalComuna}
+          onGlobalComunaChange={setGlobalComuna}
+          comunaOptions={comunaOptions}
+          caseTypeFilter={caseTypeFilter}
+          onCaseTypeChange={setCaseTypeFilter}
+          sexFilter={sexFilter}
+          onSexChange={setSexFilter}
+          ageGroupFilter={ageGroupFilter}
+          onAgeGroupChange={setAgeGroupFilter}
+          onResetFilters={resetFilters}
+        />
+
+        {/* 2. KPIs agrupados */}
+        <section className="dashboardSection" aria-labelledby="kpi-heading">
+          <div className="dashboardSectionHead">
+            <h2 id="kpi-heading" className="dashboardSectionTitle">
+              Indicadores principales
+            </h2>
+            <p className="dashboardSectionLead">
+              Resumen regional; el total de casos y los casos nuevos del mes responden al filtro de comuna cuando
+              aplica.
+            </p>
+          </div>
+
+          {refRegional && (
+            <p className="dashboard-kpi-hint no-print">
+              Con comuna seleccionada, el total de casos, &quot;Casos nuevos (mes)&quot; y las proporciones se recalculan
+              para esa comuna. Los KPIs de &quot;Programa y vigilancia&quot; siguen siendo referencia regional.
+            </p>
           )}
 
-          <div className="kpiGrid">
-            <KpiCard title="Total casos (Chagas)" value={kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0} icon="👥" color="#0d9488" loading={kpiLoading} />
-            <KpiCard title="Total Exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
-            <KpiCard title="Bajo Control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
-            <KpiCard title="Casos Agudos" value={kpiData?.total_agudo || 0} icon="⚠️" color="#f59e0b" loading={kpiLoading} />
-            <KpiCard title="Gestantes" value={kpiData?.total_gestantes || 0} icon="🤰" color="#0d9488" loading={kpiLoading} />
-            <KpiCard title="Inasistentes" value={kpiData?.total_inasistentes || 0} icon="📅" color="#ef4444" loading={kpiLoading} />
-            <KpiCard title="Tratamientos" value={kpiData?.total_tratamientos || 0} icon="💊" color="#0d9488" loading={kpiLoading} />
-            <KpiCard
-              title="% Bajo control"
-              value={
-                kpiLoading || !totalCasos
-                  ? 'N/A'
-                  : `${kpiPercentages.pctBajoControl.toFixed(1)} %`
-              }
-              icon="📈"
-              color="#0d9488"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="% Casos agudos"
-              value={
-                kpiLoading || !totalCasos
-                  ? 'N/A'
-                  : `${kpiPercentages.pctAgudo.toFixed(1)} %`
-              }
-              icon="⚠️"
-              color="#f97316"
-              loading={kpiLoading}
-            />
-            <KpiCard
-              title="% Gestantes"
-              value={
-                kpiLoading || !totalCasos
-                  ? 'N/A'
-                  : `${kpiPercentages.pctGestantes.toFixed(1)} %`
-              }
-              icon="🤰"
-              color="#0ea5e9"
-              loading={kpiLoading}
-            />
+          {kpiError && <div className="dashboardErrorBox">Error al cargar KPIs: {kpiError}</div>}
+
+          <div className="dashboardKpiGroup">
+            <h3 className="dashboardSubsectionTitle">Casos y dinámica</h3>
+            <div className="kpiGrid">
+              <KpiCard
+                title="Total casos (Chagas)"
+                value={totalCasosDisplay}
+                icon="👥"
+                color="#0d9488"
+                loading={kpiLoading}
+                subtitle={refRegional ? 'Filtrado por comuna (ranking)' : undefined}
+              />
+              <KpiCard
+                title="Casos nuevos (mes)"
+                value={nuevosEsteMes}
+                icon="✨"
+                color="#0d9488"
+                loading={geoLoading}
+                subtitle="Ingresos en el mes actual (mapa filtrado)"
+              />
+            </div>
+          </div>
+
+          <div className="dashboardKpiGroup">
+            <h3 className="dashboardSubsectionTitle">Programa y vigilancia</h3>
+            <div className="kpiGrid">
+              <KpiCard title="Total exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
+              <KpiCard title="Bajo control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
+              <KpiCard title="Casos agudos" value={kpiData?.total_agudo || 0} icon="⚠️" color="#f59e0b" loading={kpiLoading} />
+              <KpiCard title="Gestantes" value={kpiData?.total_gestantes || 0} icon="🤰" color="#0d9488" loading={kpiLoading} />
+              <KpiCard title="Inasistentes" value={kpiData?.total_inasistentes || 0} icon="📅" color="#ef4444" loading={kpiLoading} />
+              <KpiCard title="Tratamientos" value={kpiData?.total_tratamientos || 0} icon="💊" color="#0d9488" loading={kpiLoading} />
+            </div>
+          </div>
+
+          <div className="dashboardKpiGroup">
+            <div className="dashboardSubsectionTitleRow">
+              <h3 className="dashboardSubsectionTitle">Cobertura por condición</h3>
+              <span className="dashboardInfoTooltip no-print">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver explicación de proporciones solapadas"
+                  aria-describedby="coverage-overlap-tooltip"
+                >
+                  i
+                </button>
+                <span id="coverage-overlap-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
+                  Una persona puede aparecer en más de una condición (por ejemplo, gestante y bajo control), por eso
+                  estos porcentajes no necesariamente suman 100%.
+                </span>
+              </span>
+            </div>
+            <div className="kpiGrid">
+              <KpiCard
+                title="% Bajo control"
+                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctBajoControl.toFixed(1)} %`}
+                icon="📈"
+                color="#0d9488"
+                loading={loadingPercentages}
+                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
+              />
+              <KpiCard
+                title="% Casos agudos"
+                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctAgudo.toFixed(1)} %`}
+                icon="⚠️"
+                color="#f97316"
+                loading={loadingPercentages}
+                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
+              />
+              <KpiCard
+                title="% Gestantes"
+                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctGestantes.toFixed(1)} %`}
+                icon="🤰"
+                color="#0ea5e9"
+                loading={loadingPercentages}
+                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
+              />
+            </div>
           </div>
         </section>
 
-        {/* Sección de Gráficos */}
-        <section style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <h2 style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#1e293b',
-              letterSpacing: '-0.02em'
-            }}>
-              Análisis temporal y geográfico
-            </h2>
+        {/* 3. Análisis: temporal + comunas */}
+        <section className="dashboardSection dashboardAnalysisSection" aria-labelledby="analysis-heading">
+          <div className="dashboardSectionActionsRow dashboardAnalysisHead">
+            <div>
+              <h2 id="analysis-heading" className="dashboardSectionTitle">
+                Análisis temporal y por comuna
+              </h2>
+              <p className="dashboardSectionLead dashboardSectionLeadTight">
+                Serie de casos, distribución por comuna y tabla ordenable.
+              </p>
+              <p className="print-only printPeriodLine">
+                <strong>Período del gráfico temporal:</strong> {dateFrom} al {dateTo}
+              </p>
+            </div>
+            <div className="dashboardSectionActions no-print">
+              <button
+                type="button"
+                className="dashboardExportBtn"
+                disabled={!casesData?.length && !prevCasesData?.length}
+                onClick={() =>
+                  exportCasesSeriesCsv(
+                    casesData || [],
+                    prevCasesData || [],
+                    `casos_temporal_${dateFrom}_${dateTo}.csv`
+                  )
+                }
+                aria-label="Exportar serie temporal de casos a CSV"
+              >
+                CSV — Casos
+              </button>
+              <button
+                type="button"
+                className="dashboardExportBtn"
+                disabled={!comunaDataFiltered?.length}
+                onClick={() =>
+                  exportComunaRankingCsv(comunaDataFiltered || [], `casos_por_comuna_${mapYearFilter}.csv`)
+                }
+                aria-label="Exportar ranking por comuna a CSV"
+              >
+                CSV — Comunas
+              </button>
+            </div>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '1.5rem'
-          }}>
-            {/* Gráfico: Casos en el tiempo */}
-            <div>
+          <div className="dashboardChartsGrid">
+            <div className="dashboardChartColumn">
               {(casesError || prevCasesError) && (
-                <div style={{
-                  padding: '0.75rem',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '0.5rem',
-                  color: '#dc2626',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem'
-                }}>
+                <div className="dashboardErrorBox">
                   {casesError && `Error casos: ${casesError}`}
-                  {prevCasesError && ` Error casos (año anterior): ${prevCasesError}`}
+                  {prevCasesError && ` · Error año anterior: ${prevCasesError}`}
                 </div>
               )}
               <TendencyChart
@@ -406,179 +490,73 @@ export default function DashboardPage() {
                 loading={casesLoading || prevCasesLoading}
                 controls={
                   <div className="chartControls chartControlsDates">
-                    <label className="chartControlsLabel">Desde</label>
+                    <label className="chartControlsLabel" htmlFor="dash-date-from">
+                      Desde
+                    </label>
                     <input
+                      id="dash-date-from"
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
                       max={dateTo}
                       className="chartControlsInput"
+                      disabled={globalYear !== 'all'}
+                      aria-label="Fecha inicial del gráfico temporal"
                     />
-                    <label className="chartControlsLabel">Hasta</label>
+                    <label className="chartControlsLabel" htmlFor="dash-date-to">
+                      Hasta
+                    </label>
                     <input
+                      id="dash-date-to"
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
                       min={dateFrom}
                       className="chartControlsInput"
+                      disabled={globalYear !== 'all'}
+                      aria-label="Fecha final del gráfico temporal"
                     />
                   </div>
                 }
               />
+              {globalYear !== 'all' && (
+                <p className="chartFilterNote chartFilterNoteSpaced no-print">
+                  Período fijado por el año en filtros. Elige &quot;Todos&quot; en año para ajustar fechas manualmente.
+                </p>
+              )}
             </div>
 
-            {/* Gráfico de Distribución por Comuna */}
-            <div>
-              {comunaError && (
-                <div style={{
-                  padding: '0.75rem',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '0.5rem',
-                  color: '#dc2626',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem'
-                }}>
-                  Error: {comunaError}
-                </div>
-              )}
+            <div className="dashboardChartColumn">
+              {comunaError && <div className="dashboardErrorBox">Error: {comunaError}</div>}
               <ComunaBarChart
-                data={comunaData || []}
-                title="Casos por comuna"
+                data={comunaDataFiltered || []}
+                title={globalComuna ? `Casos por comuna — ${globalComuna}` : 'Casos por comuna'}
                 loading={comunaLoading}
-                controls={
-                  <div className="chartControls chartControlsFilters">
-                    <div className="chartControlsGroup">
-                      <label className="chartControlsLabel">Tipo de caso</label>
-                      <select
-                        value={caseTypeComunaFilter}
-                        onChange={(e) => setCaseTypeComunaFilter(e.target.value)}
-                        className="chartControlsSelect"
-                      >
-                        <option value="all">Todos</option>
-                        <option value="agudo">Agudos</option>
-                        <option value="bajo_control">Bajo control</option>
-                        <option value="gestante">Gestantes</option>
-                      </select>
-                    </div>
-                    <div className="chartControlsGroup">
-                      <label className="chartControlsLabel">Sexo</label>
-                      <select
-                        value={sexComunaFilter}
-                        onChange={(e) => setSexComunaFilter(e.target.value)}
-                        className="chartControlsSelect"
-                      >
-                        <option value="all">Todos</option>
-                        <option value="F">Femenino</option>
-                        <option value="M">Masculino</option>
-                      </select>
-                    </div>
-                    <div className="chartControlsGroup">
-                      <label className="chartControlsLabel">Grupo etario</label>
-                      <select
-                        value={ageGroupComunaFilter}
-                        onChange={(e) => setAgeGroupComunaFilter(e.target.value)}
-                        className="chartControlsSelect"
-                      >
-                        <option value="all">Todos</option>
-                        <option value="0_14">0-14</option>
-                        <option value="15_29">15-29</option>
-                        <option value="30_44">30-44</option>
-                        <option value="45_59">45-59</option>
-                        <option value="60_plus">60+</option>
-                      </select>
-                    </div>
-                  </div>
-                }
+                controls={<p className="chartFilterNote">Tipo, sexo y edad: filtros del panel superior.</p>}
               />
+              <ComunaRankingTable data={comunaDataFiltered || []} loading={comunaLoading} />
             </div>
           </div>
         </section>
 
-        {/* Sección de Mapa */}
-        <section style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1e293b', letterSpacing: '-0.02em' }}>
+        {/* 4. Mapa */}
+        <section className="dashboardSection dashboardMapSection no-print" aria-labelledby="map-heading">
+          <div className="dashboardSectionHead">
+            <h2 id="map-heading" className="dashboardSectionTitle">
               Mapa geográfico
             </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Tipo de caso</label>
-                <select
-                  value={caseTypeMapFilter}
-                  onChange={(e) => setCaseTypeMapFilter(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                >
-                  <option value="all">Todos</option>
-                  <option value="agudo">Agudos</option>
-                  <option value="bajo_control">Bajo control</option>
-                  <option value="gestante">Gestantes</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Sexo</label>
-                <select
-                  value={sexMapFilter}
-                  onChange={(e) => setSexMapFilter(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                >
-                  <option value="all">Todos</option>
-                  <option value="F">Femenino</option>
-                  <option value="M">Masculino</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Grupo etario</label>
-                <select
-                  value={ageGroupMapFilter}
-                  onChange={(e) => setAgeGroupMapFilter(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                >
-                  <option value="all">Todos</option>
-                  <option value="0_14">0-14</option>
-                  <option value="15_29">15-29</option>
-                  <option value="30_44">30-44</option>
-                  <option value="45_59">45-59</option>
-                  <option value="60_plus">60+</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <label style={{ fontSize: '0.875rem', color: '#64748b' }}>Año</label>
-                <select
-                  value={mapYearFilter}
-                  onChange={(e) => setMapYearFilter(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                >
-                  <option value="all">Todo el tiempo</option>
-                  <option value="2025">2025</option>
-                  <option value="2026">2026</option>
-                </select>
-              </div>
-            </div>
+            <p className="dashboardSectionLead">Puntos según filtros de año y perfil del caso; comuna recorta en pantalla.</p>
           </div>
-          {geoError && (
-            <div style={{
-              padding: '1rem',
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '0.5rem',
-              color: '#dc2626',
-              marginBottom: '1rem',
-              fontSize: '0.875rem'
-            }}>
-              Error al cargar puntos geográficos: {geoError}
-            </div>
-          )}
-
-          <SimpleMap points={geoPoints || []} loading={geoLoading} />
+          {geoError && <div className="dashboardErrorBox">Error al cargar puntos: {geoError}</div>}
+          <div className="dashboardMapCard">
+            <SimpleMap points={geoFiltered || []} loading={geoLoading} />
+          </div>
         </section>
+
+        {/* 5. Seguimiento clínico (último bloque operativo) */}
+        <div className="no-print">
+          <FollowupAlertsSection />
+        </div>
       </main>
     </div>
   )

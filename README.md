@@ -77,8 +77,6 @@ dashboard-chagas/
    http://localhost:3000
    ```
 
-> 📖 Guía mínima: `GUIA_RAPIDA.md`
-
 ## 🔐 Autenticación
 
 ### Flujo de Autenticación

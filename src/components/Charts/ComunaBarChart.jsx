@@ -38,6 +38,13 @@ export default function ComunaBarChart({
     return [...data].sort((a, b) => b.value - a.value)
   }, [data])
 
+  /** Altura según cantidad de comunas (barras horizontales legibles en pantalla e impresión). */
+  const chartHeight = useMemo(() => {
+    const n = sortedData.length
+    if (n === 0) return 400
+    return Math.min(900, Math.max(300, 110 + n * 54))
+  }, [sortedData.length])
+
   const option = useMemo(() => {
     if (sortedData.length === 0) {
       return {
@@ -68,10 +75,10 @@ export default function ComunaBarChart({
         }
       },
       grid: {
-        left: '25%',
-        right: '4%',
-        bottom: '3%',
-        top: '15%',
+        left: '22%',
+        right: '6%',
+        bottom: '4%',
+        top: '14%',
         containLabel: false
       },
       xAxis: {
@@ -96,6 +103,8 @@ export default function ComunaBarChart({
           name: 'Total Personas',
           type: 'bar',
           data: sortedData.map(d => d.value),
+          barMaxWidth: 26,
+          barCategoryGap: '28%',
           itemStyle: {
             color: {
               type: 'linear',
@@ -122,14 +131,17 @@ export default function ComunaBarChart({
 
   if (loading) {
     return (
-      <div style={cardStyle}>
+      <div style={cardStyle} className="dashboardChartCard">
         {controls && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            marginBottom: '0.5rem'
-          }}>
+          <div
+            className="dashboardChartControls no-print"
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}
+          >
             {controls}
           </div>
         )}
@@ -148,14 +160,17 @@ export default function ComunaBarChart({
 
   if (sortedData.length === 0) {
     return (
-      <div style={cardStyle}>
+      <div style={cardStyle} className="dashboardChartCard">
         {controls && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            marginBottom: '0.5rem'
-          }}>
+          <div
+            className="dashboardChartControls no-print"
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}
+          >
             {controls}
           </div>
         )}
@@ -174,20 +189,24 @@ export default function ComunaBarChart({
   }
 
   return (
-    <div style={cardStyle}>
+    <div style={cardStyle} className="dashboardChartCard">
       {controls && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          marginBottom: '0.5rem'
-        }}>
+        <div
+          className="dashboardChartControls no-print"
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}
+        >
           {controls}
         </div>
       )}
       <ReactECharts
+        className="dashboardEchartHost dashboardEchartHostBar"
         option={option}
-        style={{ height: '400px', width: '100%' }}
+        style={{ height: `${chartHeight}px`, width: '100%' }}
         opts={{ renderer: 'svg' }}
       />
     </div>

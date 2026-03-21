@@ -162,14 +162,17 @@ export default function TendencyChart({
 
   if (loading) {
     return (
-      <div style={cardStyle}>
+      <div style={cardStyle} className="dashboardChartCard">
         {controls && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: '0.5rem'
-          }}>
+          <div
+            className="dashboardChartControls no-print"
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}
+          >
             {controls}
           </div>
         )}
@@ -188,14 +191,17 @@ export default function TendencyChart({
 
   if (chartData.months.length === 0) {
     return (
-      <div style={cardStyle}>
+      <div style={cardStyle} className="dashboardChartCard">
         {controls && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            marginBottom: '0.5rem'
-          }}>
+          <div
+            className="dashboardChartControls no-print"
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}
+          >
             {controls}
           </div>
         )}
@@ -214,18 +220,22 @@ export default function TendencyChart({
   }
 
   return (
-    <div style={cardStyle}>
+    <div style={cardStyle} className="dashboardChartCard">
       {controls && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginBottom: '0.5rem'
-        }}>
+        <div
+          className="dashboardChartControls no-print"
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: '0.5rem'
+          }}
+        >
           {controls}
         </div>
       )}
       <ReactECharts
+        className="dashboardEchartHost"
         option={option}
         style={{ height: '400px', width: '100%' }}
         opts={{ renderer: 'svg' }}
