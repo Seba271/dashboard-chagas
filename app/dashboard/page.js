@@ -91,12 +91,34 @@ export default function DashboardPage() {
   )
 
   const mapYearFilter = globalYear === 'all' ? 'all' : globalYear
-  const { data: geoPoints, loading: geoLoading, error: geoError } = useMapPoints(
+  const { data: geoPoints, loading: geoLoading, error: geoError, refetch: refetchMapPoints } = useMapPoints(
     mapYearFilter,
     caseTypeFilter,
     sexFilter,
     ageGroupFilter
   )
+
+  // Refresco suave para KPIs basados en mapa (p.ej. "Casos nuevos (mes)").
+  // Sin realtime, el dashboard no detecta inserts en BD hasta recargar o refetchear.
+  useEffect(() => {
+    if (typeof refetchMapPoints !== 'function') return
+
+    const onFocus = () => refetchMapPoints()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refetchMapPoints()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+
+    const intervalId = window.setInterval(() => refetchMapPoints(), 30000)
+
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(intervalId)
+    }
+  }, [refetchMapPoints])
 
   useEffect(() => {
     if (globalYear === 'all') {
@@ -169,16 +191,39 @@ export default function DashboardPage() {
     return geoPoints.filter((p) => comunaMatches(globalComuna, p.comuna))
   }, [geoPoints, globalComuna])
 
-  const nuevosEsteMes = useMemo(
-    () => geoFiltered.filter((p) => p.isNewCase).length,
-    [geoFiltered]
-  )
+  const nuevosEsteMes = useMemo(() => {
+    // Con comuna: usamos los puntos del mapa para respetar el filtro (si el RPC trae comuna).
+    if (globalComuna.trim()) {
+      return geoFiltered.filter((p) => p.isNewCase).length
+    }
+
+    // Sin comuna: usamos la serie temporal (no depende de coordenadas/mapa).
+    const rows = casesData || []
+    if (!rows.length) return 0
+    const now = new Date()
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    return rows
+      .filter((r) => typeof r.month === 'string' && r.month.startsWith(ym))
+      .reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [globalComuna, geoFiltered, casesData])
 
   const totalCasosRegion = kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0
+
+  /** Casos en el período del gráfico temporal (dateFrom–dateTo), alineado al filtro de año del panel. */
+  const totalCasosSinComunaPeriodo = useMemo(() => {
+    const rows = casesData || []
+    return rows.reduce((s, r) => s + (Number(r.value) || 0), 0)
+  }, [casesData])
+
   const totalCasosDisplay = useMemo(() => {
-    if (!globalComuna.trim()) return totalCasosRegion
+    if (!globalComuna.trim()) {
+      return totalCasosSinComunaPeriodo
+    }
+    if (globalYear !== 'all') {
+      return geoFiltered.length
+    }
     return comunaDataFiltered.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [globalComuna, comunaDataFiltered, totalCasosRegion])
+  }, [globalComuna, globalYear, comunaDataFiltered, geoFiltered, totalCasosSinComunaPeriodo])
 
   const refRegional = !!globalComuna.trim()
 
@@ -207,8 +252,7 @@ export default function DashboardPage() {
   }, [refRegional, comunaCountsGestantes, globalComuna])
 
   const totalCasosForPercent = useMemo(() => {
-    // Usamos el mismo total que muestra el KPI "Total casos (Chagas)" cuando hay comuna seleccionada,
-    // para evitar descalces entre secciones.
+    // Sin comuna: proporciones siguen usando el total regional de KPI (mismos numeradores que get_kpi_summary).
     if (!refRegional) return totalCasosRegion
     return totalCasosDisplay
   }, [refRegional, totalCasosRegion, totalCasosDisplay])
@@ -335,8 +379,8 @@ export default function DashboardPage() {
               Indicadores principales
             </h2>
             <p className="dashboardSectionLead">
-              Resumen regional; el total de casos y los casos nuevos del mes responden al filtro de comuna cuando
-              aplica.
+              El total de casos (Chagas) sigue el período del gráfico temporal según el año del panel; con comuna
+              seleccionada se alinea al mapa (año + comuna).
             </p>
           </div>
 
@@ -357,16 +401,30 @@ export default function DashboardPage() {
                 value={totalCasosDisplay}
                 icon="👥"
                 color="#0d9488"
-                loading={kpiLoading}
-                subtitle={refRegional ? 'Filtrado por comuna (ranking)' : undefined}
+                loading={
+                  refRegional
+                    ? globalYear !== 'all'
+                      ? geoLoading
+                      : comunaLoading
+                    : casesLoading
+                }
+                subtitle={
+                  refRegional
+                    ? globalYear !== 'all'
+                      ? 'Comuna + año (mapa)'
+                      : 'Filtrado por comuna (ranking)'
+                    : globalYear === 'all'
+                      ? `Período: ${dateFrom} → ${dateTo}`
+                      : `Año ${globalYear} (${dateFrom} → ${dateTo})`
+                }
               />
               <KpiCard
                 title="Casos nuevos (mes)"
                 value={nuevosEsteMes}
                 icon="✨"
                 color="#0d9488"
-                loading={geoLoading}
-                subtitle="Ingresos en el mes actual (mapa filtrado)"
+                loading={globalComuna.trim() ? geoLoading : casesLoading}
+                subtitle={globalComuna.trim() ? 'Mes actual (mapa filtrado por comuna)' : 'Mes actual (serie temporal)'}
               />
             </div>
           </div>
