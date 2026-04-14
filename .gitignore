@@ -35,4 +35,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Scripts SQL locales (no versionar)
+supabase/sql/
 
