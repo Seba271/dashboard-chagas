@@ -20,6 +20,7 @@ import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
 import ComunaRankingTable from '@/src/components/Charts/ComunaRankingTable'
 import DashboardGlobalFilters from '@/src/components/DashboardGlobalFilters'
 import FollowupAlertsSection from '@/src/components/FollowupAlertsSection'
+import FormsAppEmbed from '@/src/components/FormsAppEmbed'
 import dynamic from 'next/dynamic'
 
 const SimpleMap = dynamic(
@@ -915,6 +916,9 @@ export default function DashboardPage() {
         <div className="no-print">
           <FollowupAlertsSection />
         </div>
+
+        {/* Encuesta (forms.app) */}
+        <FormsAppEmbed />
       </main>
     </div>
   )

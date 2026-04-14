@@ -699,6 +699,60 @@ a {
   margin: 0;
 }
 
+/* Embed encuesta forms.app (modo popup: solo título + botón centrados) */
+.formsAppEmbedSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.formsAppEmbedHead {
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+.formsAppEmbedTitle {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--dashboard-text);
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.formsAppEmbedMount {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  min-height: 5rem;
+  padding: 0.5rem 1rem 1.5rem;
+}
+
+.formsAppEmbedTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 3.75rem;
+  min-width: min(22rem, 100%);
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
 .dashboardPageHeader {
   display: flex;
   justify-content: space-between;
