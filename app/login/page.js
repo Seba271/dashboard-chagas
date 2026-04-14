@@ -29,6 +29,10 @@ import { useRouter } from 'next/navigation'
 // Importar función para crear cliente Supabase
 import { createSupabaseClient } from '@/lib/supabase'
 
+/** Valores por defecto en el formulario (acceso demo). */
+const DEFAULT_LOGIN_EMAIL = 'chagas@chagas.cl'
+const DEFAULT_LOGIN_PASSWORD = 'chagas'
+
 /**
  * Componente de la página de login
  */
@@ -43,10 +47,10 @@ export default function LoginPage() {
   // Estado para el email del formulario
   // useState('') crea una variable 'email' con valor inicial '' (vacío)
   // setEmail es la función para actualizar el valor de email
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(DEFAULT_LOGIN_EMAIL)
   
   // Estado para la contraseña del formulario
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState(DEFAULT_LOGIN_PASSWORD)
   
   // Estado para saber si se está procesando el login
   // true = está enviando datos, false = no está procesando
