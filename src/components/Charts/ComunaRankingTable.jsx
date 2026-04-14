@@ -50,7 +50,7 @@ function SparklineCell({ value, maxValue }) {
 }
 
 /**
- * Tabla ordenable con ranking por comuna y mini tendencia visual (sparkline).
+ * Tabla ordenable con ranking por comuna y mini tendencia (sparkline) por fila.
  */
 export default function ComunaRankingTable({ data = [], loading = false }) {
   const [sortKey, setSortKey] = useState('value')
@@ -95,12 +95,12 @@ export default function ComunaRankingTable({ data = [], loading = false }) {
       type="button"
       onClick={() => toggleSort(key)}
       className="comunaRankSortBtn"
-      aria-sort={
-        sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-      }
+      aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
-      {label}
-      {sortKey === key ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : ''}
+      <span>{label}</span>
+      <span className="comunaRankSortIcon" aria-hidden>
+        {sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+      </span>
     </button>
   )
 
@@ -122,34 +122,61 @@ export default function ComunaRankingTable({ data = [], loading = false }) {
 
   return (
     <div className="comunaRankTableWrap">
-      <table className="comunaRankTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">{thBtn('comuna', 'Comuna')}</th>
-            <th scope="col">{thBtn('value', 'Casos')}</th>
-            <th scope="col">{thBtn('pct', '% acum.')}</th>
-            <th scope="col">Tendencia</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row, idx) => {
-            const val = Number(row.value) || 0
-            const pct = total > 0 ? (val / total) * 100 : 0
-            return (
-              <tr key={row.comuna || idx}>
-                <td className="comunaRankNum">{idx + 1}</td>
-                <td>{row.comuna}</td>
-                <td className="comunaRankStrong">{val.toLocaleString('es-CL')}</td>
-                <td>{pct.toFixed(1)} %</td>
-                <td>
-                  <SparklineCell value={val} maxValue={maxVal} />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div className="comunaRankTableToolbar">
+        <span className="comunaRankTableTitle">Detalle del ranking</span>
+        <span className="comunaRankTableMeta">
+          {total.toLocaleString('es-CL')} casos en total
+        </span>
+      </div>
+      <div className="comunaRankTableScroll">
+        <table className="comunaRankTable">
+          <thead>
+            <tr>
+              <th scope="col" className="comunaRankTh comunaRankThRank">
+                #
+              </th>
+              <th scope="col" className="comunaRankTh">
+                {thBtn('comuna', 'Comuna')}
+              </th>
+              <th scope="col" className="comunaRankTh comunaRankThNum">
+                {thBtn('value', 'Casos')}
+              </th>
+              <th scope="col" className="comunaRankTh comunaRankThNum">
+                {thBtn('pct', '% del total')}
+              </th>
+              <th scope="col" className="comunaRankTh comunaRankThSpark">
+                Tendencia
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row, idx) => {
+              const val = Number(row.value) || 0
+              const pct = total > 0 ? (val / total) * 100 : 0
+              const rank = idx + 1
+              const topByCasos = sortKey === 'value' && sortDir === 'desc'
+              let rowClass = 'comunaRankRow'
+              if (topByCasos && rank === 1) rowClass += ' comunaRankRow--gold'
+              else if (topByCasos && rank === 2) rowClass += ' comunaRankRow--silver'
+              else if (topByCasos && rank === 3) rowClass += ' comunaRankRow--bronze'
+
+              return (
+                <tr key={row.comuna || idx} className={rowClass}>
+                  <td className="comunaRankTd comunaRankTdRank">
+                    <span className="comunaRankBadge">{rank}</span>
+                  </td>
+                  <td className="comunaRankTd comunaRankTdName">{row.comuna}</td>
+                  <td className="comunaRankTd comunaRankTdNum">{val.toLocaleString('es-CL')}</td>
+                  <td className="comunaRankTd comunaRankTdNum">{pct.toFixed(1)}%</td>
+                  <td className="comunaRankTd comunaRankTdSpark">
+                    <SparklineCell value={val} maxValue={maxVal} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

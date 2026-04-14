@@ -86,27 +86,62 @@ export default function DashboardGlobalFilters({
   return (
     <section className="dashboardGlobalFilters no-print" aria-label="Filtros globales del dashboard">
       <div className="dashboardGlobalFiltersCard">
-        <button
-          type="button"
-          className="dashboardFiltersToggleBar"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls={toggleId}
-          id="dashboard-filters-trigger"
-        >
-          <span className="dashboardFiltersToggleLeft">
-            <span className="dashboardFiltersFunnelWrap" aria-hidden>
-              <IconFunnel className="dashboardFiltersFunnelIcon" />
+        <div className="dashboardFiltersToggleBarOuter">
+          <button
+            type="button"
+            className="dashboardFiltersToggleBar dashboardFiltersToggleBar--main"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls={toggleId}
+            id="dashboard-filters-trigger"
+          >
+            <span className="dashboardFiltersToggleLeft">
+              <span className="dashboardFiltersFunnelWrap" aria-hidden>
+                <IconFunnel className="dashboardFiltersFunnelIcon" />
+              </span>
+              <span className="dashboardFiltersToggleText">Filtros del panel</span>
             </span>
-            <span className="dashboardFiltersToggleText">Filtros del panel</span>
-            {activeCount > 0 && (
+          </button>
+          <div className="dashboardFiltersToggleInfoSlot no-print">
+            <span className="dashboardInfoTooltip">
+              <button
+                type="button"
+                className="dashboardInfoTooltipBtn"
+                aria-label="Ver qué recortan los filtros del panel"
+                aria-describedby="filters-scope-tooltip"
+              >
+                i
+              </button>
+              <span id="filters-scope-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
+                Año, tipo, sexo y edad aplican al mapa, al ranking, al total de casos, a las proporciones de cobertura y
+                a las tarjetas de programa y vigilancia. La comuna también recorta esos totales. El gráfico temporal usa
+                año calendario o el rango de fechas según el año del panel.
+              </span>
+            </span>
+          </div>
+          {activeCount > 0 && (
+            <button
+              type="button"
+              className="dashboardFiltersToggleBar dashboardFiltersToggleBar--badge"
+              onClick={() => setOpen((v) => !v)}
+              tabIndex={-1}
+              aria-hidden="true"
+            >
               <span className="dashboardFiltersBadge" aria-label={`${activeCount} filtros activos`}>
                 {activeCount}
               </span>
-            )}
-          </span>
-          <IconChevron open={open} className="dashboardFiltersChevron" />
-        </button>
+            </button>
+          )}
+          <button
+            type="button"
+            className="dashboardFiltersToggleBar dashboardFiltersToggleBar--chevron"
+            onClick={() => setOpen((v) => !v)}
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            <IconChevron open={open} className="dashboardFiltersChevron" />
+          </button>
+        </div>
 
         <div
           id={toggleId}
@@ -229,9 +264,6 @@ export default function DashboardGlobalFilters({
               </div>
             )}
           </div>
-          <p className="dashboardFilterHintInline">
-            Mapa y ranking por comuna usan tipo, sexo y edad. El año acota el período del gráfico temporal.
-          </p>
         </div>
       </div>
     </section>

@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
-import { useKpiSummary } from '@/src/hooks/useKpiSummary'
+import { useKpiProgramFiltered } from '@/src/hooks/useKpiProgramFiltered'
 import { useCasesByDateRange } from '@/src/hooks/useCasesByDateRange'
 import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
 import { useMapPoints } from '@/src/hooks/useMapPoints'
@@ -32,19 +32,69 @@ const SimpleMap = dynamic(
   }
 )
 
+/** Fecha local YYYY-MM-DD. */
+function toLocalDateISO(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Hoy + N días (calendario local). */
+function todayPlusDaysLocal(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return toLocalDateISO(d)
+}
+
+function minDateStr(a, b) {
+  return a <= b ? a : b
+}
+
 function getDefaultDates() {
   const today = new Date()
   const from = new Date(today)
   from.setMonth(from.getMonth() - 12)
   return {
-    from: from.toISOString().slice(0, 10),
-    to: today.toISOString().slice(0, 10)
+    from: toLocalDateISO(from),
+    to: todayPlusDaysLocal(3)
   }
+}
+
+/** Primera fecha con datos en casos_por_fecha (KPI); el «Hasta» se fija aparte (hoy + 3 días). */
+function rangeFromCasosPorFecha(programKpi) {
+  const cpf = programKpi?.casos_por_fecha
+  if (!Array.isArray(cpf) || cpf.length === 0) return null
+  const fechas = cpf
+    .map((row) => {
+      const f = row?.fecha
+      if (typeof f === 'string') return f.slice(0, 10)
+      if (f instanceof Date) return f.toISOString().slice(0, 10)
+      return null
+    })
+    .filter(Boolean)
+    .sort()
+  if (fechas.length === 0) return null
+  return { from: fechas[0] }
 }
 
 function comunaMatches(selected, comuna) {
   if (!selected || !String(selected).trim()) return true
   return (comuna || '').trim().toLowerCase() === String(selected).trim().toLowerCase()
+}
+
+/** Ranking por comuna a partir de los puntos del mapa (misma fuente que get_map_points: año + tipo + sexo + edad). */
+function buildComunaRankingFromMapPoints(points) {
+  if (!points?.length) return []
+  const m = new Map()
+  for (const p of points) {
+    const raw = (p.comuna || '').trim()
+    const c = raw || 'Sin comuna'
+    m.set(c, (m.get(c) || 0) + 1)
+  }
+  return [...m.entries()]
+    .map(([comuna, value]) => ({ comuna, value }))
+    .sort((a, b) => b.value - a.value || a.comuna.localeCompare(b.comuna, 'es'))
 }
 
 export default function DashboardPage() {
@@ -59,44 +109,73 @@ export default function DashboardPage() {
   const [sexFilter, setSexFilter] = useState('all')
   const [ageGroupFilter, setAgeGroupFilter] = useState('all')
 
-  const { kpiData, loading: kpiLoading, error: kpiError } = useKpiSummary()
-  const { data: casesData, loading: casesLoading, error: casesError } = useCasesByDateRange(dateFrom, dateTo)
+  const mapYearFilter = globalYear === 'all' ? 'all' : globalYear
+
+  const {
+    data: programKpi,
+    loading: programKpiLoading,
+    error: programKpiError
+  } = useKpiProgramFiltered(mapYearFilter, caseTypeFilter, sexFilter, ageGroupFilter, globalComuna)
+  const {
+    data: casesDataRaw,
+    loading: casesLoading,
+    error: casesError
+  } = useCasesByDateRange(
+    dateFrom,
+    dateTo,
+    globalYear,
+    caseTypeFilter,
+    sexFilter,
+    ageGroupFilter,
+    globalComuna
+  )
   const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(
+    mapYearFilter,
     caseTypeFilter,
     sexFilter,
     ageGroupFilter
   )
 
   // Para recalcular porcentajes cuando hay comuna seleccionada.
-  // get_kpi_summary() no recibe filtros, por eso usamos get_counts_by_comuna por tipo.
+  // Sin comuna, los porcentajes usan la misma base filtrada que el mapa / conteos por comuna (no get_kpi_summary).
   const { data: comunaCountsAll, loading: comunaCountsAllLoading, error: comunaCountsAllError } = useCountsByComuna(
+    mapYearFilter,
     'all',
     sexFilter,
     ageGroupFilter
   )
   const { data: comunaCountsBajo, loading: comunaCountsBajoLoading, error: comunaCountsBajoError } = useCountsByComuna(
+    mapYearFilter,
     'bajo_control',
     sexFilter,
     ageGroupFilter
   )
   const { data: comunaCountsAgudo, loading: comunaCountsAgudoLoading, error: comunaCountsAgudoError } = useCountsByComuna(
+    mapYearFilter,
     'agudo',
     sexFilter,
     ageGroupFilter
   )
   const { data: comunaCountsGestantes, loading: comunaCountsGestantesLoading, error: comunaCountsGestantesError } = useCountsByComuna(
+    mapYearFilter,
     'gestante',
     sexFilter,
     ageGroupFilter
   )
 
-  const mapYearFilter = globalYear === 'all' ? 'all' : globalYear
+  /** Una sola carga: todos los tipos; el mapa y el ranking filtran por tipo en cliente (categoría = tipo). */
   const { data: geoPoints, loading: geoLoading, error: geoError, refetch: refetchMapPoints } = useMapPoints(
     mapYearFilter,
-    caseTypeFilter,
+    'all',
     sexFilter,
     ageGroupFilter
   )
+
+  const mapPointsForDisplay = useMemo(() => {
+    if (!geoPoints?.length) return []
+    if (caseTypeFilter === 'all') return geoPoints
+    return geoPoints.filter((p) => (p.category || '') === caseTypeFilter)
+  }, [geoPoints, caseTypeFilter])
 
   // Refresco suave para KPIs basados en mapa (p.ej. "Casos nuevos (mes)").
   // Sin realtime, el dashboard no detecta inserts en BD hasta recargar o refetchear.
@@ -120,22 +199,50 @@ export default function DashboardPage() {
     }
   }, [refetchMapPoints])
 
+  /**
+   * Ajusta Desde/Hasta del gráfico temporal: si el KPI trae casos_por_fecha, «Desde» = primera fecha;
+   * «Hasta» = hoy + 3 días (acotado al 31 dic del año si hay año fijo). Sin KPI: «Todos» → últimos
+   * 12 meses hasta hoy+3; año fijo → 1 ene … min(31 dic, hoy+3).
+   */
   useEffect(() => {
+    if (programKpiLoading) return
+
+    const r = rangeFromCasosPorFecha(programKpi)
+    if (r) {
+      setDateFrom(r.from)
+      const hasta = todayPlusDaysLocal(3)
+      if (globalYear === 'all') {
+        setDateTo(hasta)
+      } else {
+        const y = parseInt(globalYear, 10)
+        if (!Number.isNaN(y)) {
+          setDateTo(minDateStr(hasta, `${y}-12-31`))
+        }
+      }
+      return
+    }
+
     if (globalYear === 'all') {
       const d = getDefaultDates()
       setDateFrom(d.from)
       setDateTo(d.to)
       return
     }
+
     const y = parseInt(globalYear, 10)
     if (Number.isNaN(y)) return
-    const today = new Date()
-    today.setHours(23, 59, 59, 999)
-    const endOfYear = new Date(y, 11, 31)
-    const cap = today < endOfYear ? today : endOfYear
+    const hasta = todayPlusDaysLocal(3)
     setDateFrom(`${y}-01-01`)
-    setDateTo(cap.toISOString().slice(0, 10))
-  }, [globalYear])
+    setDateTo(minDateStr(hasta, `${y}-12-31`))
+  }, [
+    globalYear,
+    programKpi,
+    programKpiLoading,
+    caseTypeFilter,
+    sexFilter,
+    ageGroupFilter,
+    globalComuna
+  ])
 
   const resetFilters = useCallback(() => {
     setGlobalYear('all')
@@ -157,39 +264,63 @@ export default function DashboardPage() {
     }
   }, [])
 
-  const { prevFrom, prevTo } = useMemo(() => {
-    if (!dateFrom || !dateTo) return { prevFrom: null, prevTo: null }
-    const from = new Date(dateFrom)
-    const to = new Date(dateTo)
-    const fromPrev = new Date(from)
-    const toPrev = new Date(to)
-    fromPrev.setFullYear(fromPrev.getFullYear() - 1)
-    toPrev.setFullYear(toPrev.getFullYear() - 1)
-    return { prevFrom: fromPrev.toISOString().slice(0, 10), prevTo: toPrev.toISOString().slice(0, 10) }
-  }, [dateFrom, dateTo])
+  /**
+   * Con año ≠ «Todos», el RPC get_counts_by_comuna a menudo no aplica p_year en la BD.
+   * Usamos la misma muestra que el mapa (get_map_points) para que el ranking coincida con año/tipo/sexo/edad.
+   */
+  const comunaRankingRows = useMemo(() => {
+    if (globalYear === 'all') return comunaData ?? []
+    return buildComunaRankingFromMapPoints(mapPointsForDisplay)
+  }, [globalYear, comunaData, mapPointsForDisplay])
 
-  const { data: prevCasesData, loading: prevCasesLoading, error: prevCasesError } = useCasesByDateRange(
-    prevFrom,
-    prevTo
-  )
+  const comunaSectionLoading = globalYear === 'all' ? comunaLoading : geoLoading
+  const comunaSectionError = globalYear === 'all' ? comunaError : geoError
 
   const comunaOptions = useMemo(() => {
-    if (!comunaData?.length) return []
-    const set = new Set(comunaData.map((r) => r.comuna).filter(Boolean))
+    if (!comunaRankingRows?.length) return []
+    const set = new Set(comunaRankingRows.map((r) => r.comuna).filter(Boolean))
     return [...set].sort((a, b) => a.localeCompare(b, 'es'))
-  }, [comunaData])
+  }, [comunaRankingRows])
 
   const comunaDataFiltered = useMemo(() => {
-    if (!comunaData?.length) return []
-    if (!globalComuna.trim()) return comunaData
-    return comunaData.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [comunaData, globalComuna])
+    if (!comunaRankingRows?.length) return []
+    if (!globalComuna.trim()) return comunaRankingRows
+    return comunaRankingRows.filter((r) => comunaMatches(globalComuna, r.comuna))
+  }, [comunaRankingRows, globalComuna])
 
   const geoFiltered = useMemo(() => {
-    if (!geoPoints?.length) return []
-    if (!globalComuna.trim()) return geoPoints
+    if (!mapPointsForDisplay?.length) return []
+    if (!globalComuna.trim()) return mapPointsForDisplay
+    return mapPointsForDisplay.filter((p) => comunaMatches(globalComuna, p.comuna))
+  }, [mapPointsForDisplay, globalComuna])
+
+  /**
+   * Con año fijo, «Total casos» y el mapa usan get_map_points; la serie usa fecha de registro
+   * (get_cases_by_date_range = creado_en, alineado a casos_por_fecha del KPI). Si el mapa no tiene
+   * puntos para ese año/filtro, vaciamos la serie para no contradecir el contador en cero.
+   */
+  const casesData = useMemo(() => {
+    if (globalYear === 'all') return casesDataRaw
+    if (geoLoading) return casesDataRaw
+    const noMapPoints = globalComuna.trim() ? geoFiltered.length === 0 : mapPointsForDisplay.length === 0
+    if (noMapPoints) return []
+    return casesDataRaw ?? []
+  }, [
+    globalYear,
+    geoLoading,
+    globalComuna,
+    geoFiltered,
+    mapPointsForDisplay,
+    casesDataRaw
+  ])
+
+  const casesChartLoading = casesLoading || (globalYear !== 'all' && geoLoading)
+
+  /** Puntos en la comuna elegida (todos los tipos) — para % cobertura con año filtrado. */
+  const geoInComunaAllTypes = useMemo(() => {
+    if (!globalComuna.trim() || !geoPoints?.length) return []
     return geoPoints.filter((p) => comunaMatches(globalComuna, p.comuna))
-  }, [geoPoints, globalComuna])
+  }, [globalComuna, geoPoints])
 
   const nuevosEsteMes = useMemo(() => {
     // Con comuna: usamos los puntos del mapa para respetar el filtro (si el RPC trae comuna).
@@ -207,78 +338,187 @@ export default function DashboardPage() {
       .reduce((s, r) => s + (Number(r.value) || 0), 0)
   }, [globalComuna, geoFiltered, casesData])
 
-  const totalCasosRegion = kpiData?.total_personas_casos ?? kpiData?.total_personas ?? 0
+  const sumRankingValues = useCallback((rows) => (rows || []).reduce((s, r) => s + (Number(r.value) || 0), 0), [])
 
-  /** Casos en el período del gráfico temporal (dateFrom–dateTo), alineado al filtro de año del panel. */
-  const totalCasosSinComunaPeriodo = useMemo(() => {
-    const rows = casesData || []
-    return rows.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [casesData])
-
+  /**
+   * Total casos (Chagas) alineado a filtros del panel: año, tipo, sexo, edad y comuna.
+   * Misma base que mapa + ranking (get_map_points con año fijo; get_counts_by_comuna con «Todos»).
+   */
   const totalCasosDisplay = useMemo(() => {
-    if (!globalComuna.trim()) {
-      return totalCasosSinComunaPeriodo
+    if (globalComuna.trim()) {
+      if (globalYear !== 'all') return geoFiltered.length
+      return sumRankingValues(comunaDataFiltered)
     }
-    if (globalYear !== 'all') {
-      return geoFiltered.length
+    if (globalYear !== 'all') return mapPointsForDisplay.length
+    return sumRankingValues(comunaData)
+  }, [
+    globalComuna,
+    globalYear,
+    geoFiltered,
+    comunaDataFiltered,
+    mapPointsForDisplay,
+    comunaData,
+    sumRankingValues
+  ])
+
+  const totalCasosFilteredLoading = useMemo(() => {
+    if (globalYear !== 'all') return geoLoading
+    return comunaLoading
+  }, [globalYear, geoLoading, comunaLoading])
+
+  const totalCasosCardSubtitle = useMemo(() => {
+    const parts = []
+    if (globalYear !== 'all') parts.push(`Año ${globalYear}`)
+    else parts.push('Todos los años')
+    if (caseTypeFilter !== 'all') parts.push(`Tipo: ${caseTypeFilter}`)
+    if (sexFilter !== 'all') parts.push(`Sexo: ${sexFilter}`)
+    if (ageGroupFilter !== 'all') parts.push(`Edad: ${ageGroupFilter}`)
+    if (globalComuna.trim()) parts.push(`Comuna: ${globalComuna.trim()}`)
+    else parts.push('Región (suma comunas / mapa)')
+    return parts.join(' · ')
+  }, [globalYear, caseTypeFilter, sexFilter, ageGroupFilter, globalComuna])
+
+  /**
+   * Con año fijo, bajo/agudo/gestantes deben coincidir con get_map_points (mismo criterio que total casos).
+   * El RPC get_kpi_program_filtered puede desalinearse; exámenes/inasist./trat. siguen en BD y se anulan si el mapa no trae casos en ese año/filtro.
+   */
+  const programVigilanciaLoading =
+    globalYear !== 'all' ? geoLoading || programKpiLoading : programKpiLoading
+
+  const programVigilanciaTotals = useMemo(() => {
+    if (globalYear === 'all') {
+      return {
+        total_bajo_control: programKpi?.total_bajo_control ?? 0,
+        total_agudo: programKpi?.total_agudo ?? 0,
+        total_gestantes: programKpi?.total_gestantes ?? 0,
+        total_examenes: programKpi?.total_examenes ?? 0,
+        total_inasistentes: programKpi?.total_inasistentes ?? 0,
+        total_tratamientos: programKpi?.total_tratamientos ?? 0
+      }
     }
-    return comunaDataFiltered.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [globalComuna, globalYear, comunaDataFiltered, geoFiltered, totalCasosSinComunaPeriodo])
+    if (geoLoading) {
+      return {
+        total_bajo_control: 0,
+        total_agudo: 0,
+        total_gestantes: 0,
+        total_examenes: 0,
+        total_inasistentes: 0,
+        total_tratamientos: 0
+      }
+    }
+    const pts = (geoPoints || []).filter((p) =>
+      globalComuna.trim() ? comunaMatches(globalComuna, p.comuna) : true
+    )
+    const byCat = (cat) => pts.filter((p) => (p.category || '') === cat).length
+    const noMapCases = pts.length === 0
+    return {
+      total_bajo_control: byCat('bajo_control'),
+      total_agudo: byCat('agudo'),
+      total_gestantes: byCat('gestante'),
+      total_examenes: noMapCases ? 0 : (programKpi?.total_examenes ?? 0),
+      total_inasistentes: noMapCases ? 0 : (programKpi?.total_inasistentes ?? 0),
+      total_tratamientos: noMapCases ? 0 : (programKpi?.total_tratamientos ?? 0)
+    }
+  }, [globalYear, geoLoading, geoPoints, globalComuna, programKpi])
 
   const refRegional = !!globalComuna.trim()
 
   const selectedCountsAll = useMemo(() => {
     if (!refRegional) return []
+    if (globalYear !== 'all') {
+      const n = geoInComunaAllTypes.length
+      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
+    }
     if (!comunaCountsAll?.length) return []
     return comunaCountsAll.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, comunaCountsAll, globalComuna])
+  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsAll])
 
   const selectedCountsBajo = useMemo(() => {
     if (!refRegional) return []
+    if (globalYear !== 'all') {
+      const n = geoInComunaAllTypes.filter((p) => p.category === 'bajo_control').length
+      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
+    }
     if (!comunaCountsBajo?.length) return []
     return comunaCountsBajo.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, comunaCountsBajo, globalComuna])
+  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsBajo])
 
   const selectedCountsAgudo = useMemo(() => {
     if (!refRegional) return []
+    if (globalYear !== 'all') {
+      const n = geoInComunaAllTypes.filter((p) => p.category === 'agudo').length
+      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
+    }
     if (!comunaCountsAgudo?.length) return []
     return comunaCountsAgudo.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, comunaCountsAgudo, globalComuna])
+  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsAgudo])
 
   const selectedCountsGestantes = useMemo(() => {
     if (!refRegional) return []
+    if (globalYear !== 'all') {
+      const n = geoInComunaAllTypes.filter((p) => p.category === 'gestante').length
+      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
+    }
     if (!comunaCountsGestantes?.length) return []
     return comunaCountsGestantes.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, comunaCountsGestantes, globalComuna])
+  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsGestantes])
 
   const totalCasosForPercent = useMemo(() => {
-    // Sin comuna: proporciones siguen usando el total regional de KPI (mismos numeradores que get_kpi_summary).
-    if (!refRegional) return totalCasosRegion
+    if (!refRegional) {
+      if (globalYear !== 'all') return geoPoints?.length ?? 0
+      return sumRankingValues(comunaCountsAll)
+    }
+    if (globalYear !== 'all') return geoInComunaAllTypes.length
     return totalCasosDisplay
-  }, [refRegional, totalCasosRegion, totalCasosDisplay])
+  }, [
+    refRegional,
+    globalYear,
+    geoPoints,
+    comunaCountsAll,
+    geoInComunaAllTypes,
+    totalCasosDisplay,
+    sumRankingValues
+  ])
 
   const bajoForPercent = useMemo(() => {
-    if (!refRegional) return kpiData?.total_bajo_control ?? 0
+    if (!refRegional) {
+      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'bajo_control').length
+      return sumRankingValues(comunaCountsBajo)
+    }
     return selectedCountsBajo.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, kpiData?.total_bajo_control, selectedCountsBajo])
+  }, [refRegional, globalYear, geoPoints, comunaCountsBajo, selectedCountsBajo, sumRankingValues])
 
   const agudoForPercent = useMemo(() => {
-    if (!refRegional) return kpiData?.total_agudo ?? 0
+    if (!refRegional) {
+      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'agudo').length
+      return sumRankingValues(comunaCountsAgudo)
+    }
     return selectedCountsAgudo.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, kpiData?.total_agudo, selectedCountsAgudo])
+  }, [refRegional, globalYear, geoPoints, comunaCountsAgudo, selectedCountsAgudo, sumRankingValues])
 
   const gestantesForPercent = useMemo(() => {
-    if (!refRegional) return kpiData?.total_gestantes ?? 0
+    if (!refRegional) {
+      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'gestante').length
+      return sumRankingValues(comunaCountsGestantes)
+    }
     return selectedCountsGestantes.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, kpiData?.total_gestantes, selectedCountsGestantes])
+  }, [refRegional, globalYear, geoPoints, comunaCountsGestantes, selectedCountsGestantes, sumRankingValues])
 
   const loadingPercentages = refRegional
-    ? comunaLoading ||
-      comunaCountsAllLoading ||
-      comunaCountsBajoLoading ||
-      comunaCountsAgudoLoading ||
-      comunaCountsGestantesLoading
-    : kpiLoading
+    ? globalYear !== 'all'
+      ? geoLoading
+      : comunaLoading ||
+        comunaCountsAllLoading ||
+        comunaCountsBajoLoading ||
+        comunaCountsAgudoLoading ||
+        comunaCountsGestantesLoading
+    : globalYear !== 'all'
+      ? geoLoading
+      : comunaLoading ||
+        comunaCountsAllLoading ||
+        comunaCountsBajoLoading ||
+        comunaCountsAgudoLoading ||
+        comunaCountsGestantesLoading
 
   const kpiPercentages = useMemo(
     () => ({
@@ -378,20 +618,35 @@ export default function DashboardPage() {
             <h2 id="kpi-heading" className="dashboardSectionTitle">
               Indicadores principales
             </h2>
-            <p className="dashboardSectionLead">
-              El total de casos (Chagas) sigue el período del gráfico temporal según el año del panel; con comuna
-              seleccionada se alinea al mapa (año + comuna).
-            </p>
+            <div className="dashboardSectionLeadRow no-print">
+              <span className="dashboardSectionLeadLabel">Fuentes de cada bloque</span>
+              <span className="dashboardInfoTooltip">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver cómo se relacionan los indicadores con el panel y el gráfico"
+                  aria-describedby="kpi-main-sources-tooltip"
+                >
+                  i
+                </button>
+                <span id="kpi-main-sources-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
+                  El total de la primera tarjeta, las proporciones de cobertura y el bloque &quot;Programa y
+                  vigilancia&quot; siguen año, tipo, sexo, edad y comuna del panel (vía mapa / ranking y base de datos).
+                  La serie temporal y &quot;Casos nuevos&quot; siguen el gráfico.
+                </span>
+              </span>
+            </div>
           </div>
 
           {refRegional && (
             <p className="dashboard-kpi-hint no-print">
-              Con comuna seleccionada, el total de casos, &quot;Casos nuevos (mes)&quot; y las proporciones se recalculan
-              para esa comuna. Los KPIs de &quot;Programa y vigilancia&quot; siguen siendo referencia regional.
+              Con comuna, el total, las proporciones y los KPI de programa se limitan a esa comuna.
             </p>
           )}
 
-          {kpiError && <div className="dashboardErrorBox">Error al cargar KPIs: {kpiError}</div>}
+          {programKpiError && (
+            <div className="dashboardErrorBox">Error al cargar KPIs de programa: {programKpiError}</div>
+          )}
 
           <div className="dashboardKpiGroup">
             <h3 className="dashboardSubsectionTitle">Casos y dinámica</h3>
@@ -401,22 +656,8 @@ export default function DashboardPage() {
                 value={totalCasosDisplay}
                 icon="👥"
                 color="#0d9488"
-                loading={
-                  refRegional
-                    ? globalYear !== 'all'
-                      ? geoLoading
-                      : comunaLoading
-                    : casesLoading
-                }
-                subtitle={
-                  refRegional
-                    ? globalYear !== 'all'
-                      ? 'Comuna + año (mapa)'
-                      : 'Filtrado por comuna (ranking)'
-                    : globalYear === 'all'
-                      ? `Período: ${dateFrom} → ${dateTo}`
-                      : `Año ${globalYear} (${dateFrom} → ${dateTo})`
-                }
+                loading={totalCasosFilteredLoading}
+                subtitle={totalCasosCardSubtitle}
               />
               <KpiCard
                 title="Casos nuevos (mes)"
@@ -430,14 +671,68 @@ export default function DashboardPage() {
           </div>
 
           <div className="dashboardKpiGroup">
-            <h3 className="dashboardSubsectionTitle">Programa y vigilancia</h3>
+            <div className="dashboardSubsectionTitleRow">
+              <h3 className="dashboardSubsectionTitle">Programa y vigilancia</h3>
+              <span className="dashboardInfoTooltip no-print">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver cómo se calculan las tarjetas de programa y vigilancia"
+                  aria-describedby="programa-vigilancia-tooltip"
+                >
+                  i
+                </button>
+                <span id="programa-vigilancia-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
+                  Con año fijado, bajo control, agudos y gestantes cuentan igual que los puntos del mapa. Exámenes,
+                  inasistencias y tratamientos salen de la base; si para ese año no hay ningún caso en el mapa con los
+                  filtros actuales, esas tres tarjetas se muestran en 0. Con «Todos» en año, las seis tarjetas siguen el
+                  resumen filtrado en el servidor.
+                </span>
+              </span>
+            </div>
             <div className="kpiGrid">
-              <KpiCard title="Total exámenes" value={kpiData?.total_examenes || 0} icon="🔬" color="#0d9488" loading={kpiLoading} />
-              <KpiCard title="Bajo control" value={kpiData?.total_bajo_control || 0} icon="✅" color="#0d9488" loading={kpiLoading} />
-              <KpiCard title="Casos agudos" value={kpiData?.total_agudo || 0} icon="⚠️" color="#f59e0b" loading={kpiLoading} />
-              <KpiCard title="Gestantes" value={kpiData?.total_gestantes || 0} icon="🤰" color="#0d9488" loading={kpiLoading} />
-              <KpiCard title="Inasistentes" value={kpiData?.total_inasistentes || 0} icon="📅" color="#ef4444" loading={kpiLoading} />
-              <KpiCard title="Tratamientos" value={kpiData?.total_tratamientos || 0} icon="💊" color="#0d9488" loading={kpiLoading} />
+              <KpiCard
+                title="Total exámenes"
+                value={programVigilanciaTotals.total_examenes || 0}
+                icon="🔬"
+                color="#0d9488"
+                loading={programVigilanciaLoading}
+              />
+              <KpiCard
+                title="Bajo control"
+                value={programVigilanciaTotals.total_bajo_control || 0}
+                icon="✅"
+                color="#0d9488"
+                loading={programVigilanciaLoading}
+              />
+              <KpiCard
+                title="Casos agudos"
+                value={programVigilanciaTotals.total_agudo || 0}
+                icon="⚠️"
+                color="#f59e0b"
+                loading={programVigilanciaLoading}
+              />
+              <KpiCard
+                title="Gestantes"
+                value={programVigilanciaTotals.total_gestantes || 0}
+                icon="🤰"
+                color="#0d9488"
+                loading={programVigilanciaLoading}
+              />
+              <KpiCard
+                title="Inasistentes"
+                value={programVigilanciaTotals.total_inasistentes || 0}
+                icon="📅"
+                color="#ef4444"
+                loading={programVigilanciaLoading}
+              />
+              <KpiCard
+                title="Tratamientos"
+                value={programVigilanciaTotals.total_tratamientos || 0}
+                icon="💊"
+                color="#0d9488"
+                loading={programVigilanciaLoading}
+              />
             </div>
           </div>
 
@@ -506,11 +801,11 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="dashboardExportBtn"
-                disabled={!casesData?.length && !prevCasesData?.length}
+                disabled={!casesData?.length}
                 onClick={() =>
                   exportCasesSeriesCsv(
                     casesData || [],
-                    prevCasesData || [],
+                    [],
                     `casos_temporal_${dateFrom}_${dateTo}.csv`
                   )
                 }
@@ -534,18 +829,19 @@ export default function DashboardPage() {
 
           <div className="dashboardChartsGrid">
             <div className="dashboardChartColumn">
-              {(casesError || prevCasesError) && (
+              {casesError && (
                 <div className="dashboardErrorBox">
-                  {casesError && `Error casos: ${casesError}`}
-                  {prevCasesError && ` · Error año anterior: ${prevCasesError}`}
+                  {`Error casos: ${casesError}`}
                 </div>
               )}
               <TendencyChart
                 casesData={casesData || []}
-                prevCasesData={prevCasesData || []}
+                prevCasesData={[]}
+                rangeFrom={dateFrom}
+                rangeTo={dateTo}
                 title="Casos en el tiempo"
                 type="line"
-                loading={casesLoading || prevCasesLoading}
+                loading={casesChartLoading}
                 controls={
                   <div className="chartControls chartControlsDates">
                     <label className="chartControlsLabel" htmlFor="dash-date-from">
@@ -577,22 +873,26 @@ export default function DashboardPage() {
                   </div>
                 }
               />
-              {globalYear !== 'all' && (
-                <p className="chartFilterNote chartFilterNoteSpaced no-print">
-                  Período fijado por el año en filtros. Elige &quot;Todos&quot; en año para ajustar fechas manualmente.
-                </p>
-              )}
             </div>
 
             <div className="dashboardChartColumn">
-              {comunaError && <div className="dashboardErrorBox">Error: {comunaError}</div>}
+              {comunaSectionError && <div className="dashboardErrorBox">Error: {comunaSectionError}</div>}
               <ComunaBarChart
                 data={comunaDataFiltered || []}
                 title={globalComuna ? `Casos por comuna — ${globalComuna}` : 'Casos por comuna'}
-                loading={comunaLoading}
-                controls={<p className="chartFilterNote">Tipo, sexo y edad: filtros del panel superior.</p>}
+                loading={comunaSectionLoading}
+                controls={
+                  <p className="chartFilterNote">
+                    {globalYear === 'all'
+                      ? 'Tipo, sexo y edad: filtros del panel superior (datos desde ranking).'
+                      : 'Misma muestra que el mapa para el año y filtros elegidos (puntos geográficos).'}
+                  </p>
+                }
               />
-              <ComunaRankingTable data={comunaDataFiltered || []} loading={comunaLoading} />
+            </div>
+
+            <div className="dashboardChartColumn dashboardChartColumn--full">
+              <ComunaRankingTable data={comunaDataFiltered || []} loading={comunaSectionLoading} />
             </div>
           </div>
         </section>

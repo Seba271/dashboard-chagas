@@ -11,6 +11,7 @@
  * - Permite recargar datos con refetch
  * 
  * PARÁMETROS:
+ * - yearFilter: 'all' | año (ej. '2025') — se envía como p_year al RPC
  * - caseType: 'all' | 'agudo' | 'bajo_control' | 'gestante'
  * - sex: 'all' | 'M' | 'F'
  * - ageGroup: 'all' | '0_14' | '15_29' | '30_44' | '45_59' | '60_plus'
@@ -29,7 +30,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 
-export function useCountsByComuna(caseType = 'all', sex = 'all', ageGroup = 'all') {
+export function useCountsByComuna(yearFilter = 'all', caseType = 'all', sex = 'all', ageGroup = 'all') {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -41,8 +42,15 @@ export function useCountsByComuna(caseType = 'all', sex = 'all', ageGroup = 'all
 
       const supabase = createSupabaseClient()
 
-      // Llamar al RPC get_counts_by_comuna (solo casos, opcionalmente filtrados por tipo, sexo y grupo etario)
+      // Llamar al RPC get_counts_by_comuna (tipo, sexo, grupo etario; año alineado al mapa)
       const params = { p_limit: 50 }
+      if (yearFilter && yearFilter !== 'all') {
+        const parsed = parseInt(yearFilter, 10)
+        if (!Number.isNaN(parsed)) {
+          params.p_year = parsed
+        }
+      }
+
       if (caseType && caseType !== 'all') {
         params.p_case_type = caseType
       }
@@ -81,9 +89,9 @@ export function useCountsByComuna(caseType = 'all', sex = 'all', ageGroup = 'all
     } finally {
       setLoading(false)
     }
-  }, [caseType, sex, ageGroup])
+  }, [yearFilter, caseType, sex, ageGroup])
 
-  // Cargar datos al montar o cuando cambie el parámetro caseType, sex o ageGroup
+  // Cargar datos al montar o cuando cambien año, tipo, sexo o grupo etario
   useEffect(() => {
     fetchData()
   }, [fetchData])

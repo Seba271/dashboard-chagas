@@ -124,9 +124,9 @@ export default function SimpleMap({ points = [], loading = false }) {
 
   // Efecto para actualizar la capa de calor cuando cambian los puntos
   useEffect(() => {
-    if (!mapInstanceRef.current || !mapReady || loading) return
+    if (!mapInstanceRef.current || !mapReady) return
 
-    // Remover capa de calor y puntos anteriores
+    // Siempre quitar capas anteriores primero (si loading === true antes no se limpiaba y el heat quedaba de otro filtro/año).
     markersRef.current.forEach(m => {
       if (m && mapInstanceRef.current) {
         try { mapInstanceRef.current.removeLayer(m) } catch (e) {}
@@ -139,6 +139,8 @@ export default function SimpleMap({ points = [], loading = false }) {
       } catch (e) {}
       heatLayerRef.current = null
     }
+
+    if (loading) return
 
     if (points && points.length > 0) {
       Promise.all([import('leaflet')]).then(([leafletModule]) => {

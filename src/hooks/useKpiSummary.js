@@ -2,27 +2,26 @@
  * ============================================================================
  * HOOK: useKpiSummary
  * ============================================================================
- * 
- * Hook personalizado para obtener el resumen de KPIs desde Supabase.
- * 
- * FUNCIONALIDADES:
- * - Llama al RPC get_kpi_summary() de Supabase
- * - Maneja estados de loading y error
- * - Retorna los datos de KPIs en formato estructurado
- * 
- * RETORNA:
- * {
- *   kpiData: Object | null - Datos de KPIs
- *   loading: boolean - Estado de carga
- *   error: string | null - Mensaje de error si existe
- *   refetch: Function - Función para recargar los datos
- * }
+ * Resumen de KPIs vía get_kpi_summary() sin parámetros (compatible con BD actual).
  */
 
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
+
+function normalizeKpiPayload(data) {
+  if (data == null) return null
+  if (Array.isArray(data)) return data[0] ?? null
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data)
+    } catch {
+      return null
+    }
+  }
+  return data
+}
 
 export function useKpiSummary() {
   const [kpiData, setKpiData] = useState(null)
@@ -33,21 +32,19 @@ export function useKpiSummary() {
     try {
       setLoading(true)
       setError(null)
-
       const supabase = createSupabaseClient()
-
-      // Llamar al RPC get_kpi_summary()
       const { data, error: rpcError } = await supabase.rpc('get_kpi_summary')
 
       if (rpcError) {
         throw new Error(rpcError.message || 'Error al obtener KPIs')
       }
 
-      if (!data) {
+      const row = normalizeKpiPayload(data)
+      if (!row) {
         throw new Error('No se recibieron datos del servidor')
       }
 
-      setKpiData(data)
+      setKpiData(row)
     } catch (err) {
       setError(err.message || 'Error al cargar los indicadores')
       setKpiData(null)
@@ -56,7 +53,6 @@ export function useKpiSummary() {
     }
   }, [])
 
-  // Cargar datos al montar el componente
   useEffect(() => {
     fetchKpiSummary()
   }, [fetchKpiSummary])

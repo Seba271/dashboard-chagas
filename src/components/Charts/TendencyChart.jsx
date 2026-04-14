@@ -8,6 +8,7 @@
  * PROPS:
  * - casesData: Array<{month: string, value: number}> - Casos por fecha (month = YYYY-MM-DD)
  * - prevCasesData?: Array<{month: string, value: number}> - Casos año anterior
+ * - rangeFrom / rangeTo: YYYY-MM-DD del período del gráfico; rellena días sin datos con 0 en el eje X.
  * - title?: string - Título del gráfico
  * - type?: 'line' | 'bar'
  * - loading?: boolean
@@ -18,21 +19,80 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 
+function pad2(n) {
+  return String(n).padStart(2, '0')
+}
+
+/** Lista inclusiva YYYY-MM-DD … YYYY-MM-DD (fechas locales, sin UTC). */
+function eachDayInRangeISO(fromStr, toStr) {
+  if (!fromStr || !toStr) return []
+  const a = fromStr.slice(0, 10).split('-').map(Number)
+  const b = toStr.slice(0, 10).split('-').map(Number)
+  if (a.length < 3 || b.length < 3 || a.some(Number.isNaN) || b.some(Number.isNaN)) return []
+  const from = new Date(a[0], a[1] - 1, a[2])
+  const to = new Date(b[0], b[1] - 1, b[2])
+  if (from > to) return []
+  const out = []
+  for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    out.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`)
+  }
+  return out
+}
+
+/** Fechas YYYY-MM-DD con al menos un caso (> 0), dentro del rango, ordenadas. */
+function datesWithCasesInRange(casesData, fullRangeSet) {
+  const seen = new Set()
+  const out = []
+  for (const item of casesData) {
+    const key = typeof item.month === 'string' ? item.month.slice(0, 10) : ''
+    if (!key || !fullRangeSet.has(key)) continue
+    if ((Number(item.value) || 0) <= 0) continue
+    if (!seen.has(key)) {
+      seen.add(key)
+      out.push(key)
+    }
+  }
+  return out.sort()
+}
+
 export default function TendencyChart({
   casesData = [],
   prevCasesData = [],
+  rangeFrom = '',
+  rangeTo = '',
   title = 'Casos en el tiempo',
   type = 'line',
   loading = false,
   controls = null
 }) {
   const chartData = useMemo(() => {
-    const allMonths = new Set()
-    casesData.forEach(item => allMonths.add(item.month))
-    prevCasesData.forEach(item => allMonths.add(item.month))
-    const sortedMonths = Array.from(allMonths).sort()
+    const casesMap = new Map(
+      casesData.map((item) => {
+        const k = typeof item.month === 'string' ? item.month.slice(0, 10) : item.month
+        return [k, item.value]
+      })
+    )
 
-    const casesMap = new Map(casesData.map(item => [item.month, item.value]))
+    const fullRange = eachDayInRangeISO(rangeFrom, rangeTo)
+    const fullRangeSet = new Set(fullRange)
+
+    /* Si el rango es largo y casi todos los días son 0, el eje solo muestra días con casos (evita un pico invisible al final). */
+    const nonZeroDates = datesWithCasesInRange(casesData, fullRangeSet)
+    const sparseTimeline =
+      fullRange.length > 45 &&
+      nonZeroDates.length > 0 &&
+      nonZeroDates.length < fullRange.length * 0.3
+
+    let sortedMonths
+    /* Límite para no colgar el navegador con rangos enormes (> ~3 años día a día). */
+    if (fullRange.length > 0 && fullRange.length <= 1200) {
+      sortedMonths = sparseTimeline ? nonZeroDates : fullRange
+    } else {
+      const allMonths = new Set()
+      casesData.forEach((item) => allMonths.add(item.month))
+      prevCasesData.forEach((item) => allMonths.add(item.month))
+      sortedMonths = Array.from(allMonths).sort()
+    }
     const getMonthKey = (monthStr) => {
       if (!monthStr) return null
       const parts = monthStr.split('-')
@@ -42,14 +102,17 @@ export default function TendencyChart({
 
     return {
       months: sortedMonths,
-      cases: sortedMonths.map(month => casesMap.get(month) || 0),
-      casesPrev: sortedMonths.map(month => {
+      cases: sortedMonths.map((month) => casesMap.get(month) || 0),
+      casesPrev: sortedMonths.map((month) => {
         const key = getMonthKey(month)
         return (key && prevMap.get(key)) || 0
       }),
-      hasPrev: prevCasesData && prevCasesData.length > 0
+      hasPrev: prevCasesData && prevCasesData.length > 0,
+      sparseTimeline,
+      xLabelInterval:
+        sortedMonths.length > 45 ? Math.max(1, Math.ceil(sortedMonths.length / 14)) : 0
     }
-  }, [casesData, prevCasesData])
+  }, [casesData, prevCasesData, rangeFrom, rangeTo])
 
   const formatLabel = (dateStr) => {
     const parts = dateStr.split('-')
@@ -72,6 +135,8 @@ export default function TendencyChart({
         type: type,
         data: chartData.cases,
         smooth: type === 'line',
+        showSymbol: true,
+        symbolSize: chartData.months.length <= 24 ? 9 : 6,
         itemStyle: { color: '#0d9488' },
         areaStyle: type === 'line' ? {
           color: {
@@ -97,11 +162,18 @@ export default function TendencyChart({
         areaStyle: undefined
       })
     }
+    const hasTitleText = Boolean(title && String(title).trim())
+    const showTitleBlock = hasTitleText || chartData.sparseTimeline
     return {
       title: {
+        show: showTitleBlock,
         text: title,
+        subtext: chartData.sparseTimeline
+          ? 'Solo se muestran días con al menos un caso (el período tiene muchos días en cero).'
+          : '',
         left: 'center',
-        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
+        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' },
+        subtextStyle: { color: '#64748b', fontSize: 11, fontWeight: 'normal' }
       },
       tooltip: {
         trigger: 'axis',
@@ -117,14 +189,14 @@ export default function TendencyChart({
       },
       legend: {
         data: legendItems,
-        top: '10%',
+        top: chartData.sparseTimeline ? '14%' : '10%',
         textStyle: { color: '#64748b', fontSize: 12 }
       },
       grid: {
         left: '3%',
         right: '4%',
-        bottom: '3%',
-        top: '20%',
+        bottom: chartData.months.length > 12 ? '14%' : '10%',
+        top: chartData.sparseTimeline ? '22%' : '18%',
         containLabel: true
       },
       xAxis: {
@@ -133,7 +205,8 @@ export default function TendencyChart({
         axisLabel: {
           color: '#64748b',
           fontSize: 11,
-          rotate: chartData.months.length > 8 ? 45 : 0
+          rotate: chartData.months.length > 10 ? 35 : 0,
+          ...(chartData.xLabelInterval > 0 ? { interval: chartData.xLabelInterval } : {})
         },
         axisLine: { lineStyle: { color: '#e2e8f0' } }
       },
@@ -180,7 +253,7 @@ export default function TendencyChart({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          height: '360px',
+          height: '440px',
           color: '#64748b'
         }}>
           Cargando gráfico...
@@ -210,7 +283,7 @@ export default function TendencyChart({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          height: '360px',
+          height: '440px',
           color: '#64748b'
         }}>
           No hay datos de casos en el período seleccionado
@@ -235,9 +308,9 @@ export default function TendencyChart({
         </div>
       )}
       <ReactECharts
-        className="dashboardEchartHost"
+        className="dashboardEchartHost dashboardEchartHost--tendency"
         option={option}
-        style={{ height: '400px', width: '100%' }}
+        style={{ height: '480px', width: '100%' }}
         opts={{ renderer: 'svg' }}
       />
     </div>
