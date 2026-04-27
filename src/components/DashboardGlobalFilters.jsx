@@ -122,9 +122,10 @@ export default function DashboardGlobalFilters({
                 i
               </button>
               <span id="filters-scope-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                Año, sector, estado, género y edad recortan todas las tarjetas, gráficos y mapa del
-                panel. El total de casos siempre corresponde al modelo epidemiológico anónimo (no
-                hay datos clínicos ni de identificación).
+                Año, sector, estado, género, edad y ocupación recortan KPIs, mapa, ranking y demás
+                gráficos del panel. Con año <strong>Todos</strong> se consideran todos los registros
+                en base de datos (sin límite de fechas en el panel). El gráfico <em>Casos en el
+                tiempo</em> tiene su propio rango Desde/Hasta debajo del gráfico.
               </span>
             </span>
           </div>

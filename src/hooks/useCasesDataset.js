@@ -12,7 +12,8 @@ import { ageGroupRange } from '@/lib/caseEnums'
  *
  * Filtros soportados:
  * - yearFilter: 'all' | 'YYYY'
- * - dateFrom / dateTo: 'YYYY-MM-DD' (solo cuando yearFilter === 'all')
+ * - dateFrom / dateTo: 'YYYY-MM-DD' (solo cuando yearFilter === 'all'). Si ambos
+ *   van vacíos con año "Todos", no se filtra por fecha (toda la historia).
  * - sectorId: 'all' | number
  * - estadoFilter: 'all' | 'nuevo' | 'reingreso' | 'tratado'
  * - generoFilter: 'all' | 'masculino' | 'femenino' | 'otro' (según enum)

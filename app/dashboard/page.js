@@ -81,6 +81,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { user, loading: sessionLoading, error: sessionError } = useSession()
 
+  /** Ventana solo para el gráfico "Casos en el tiempo" y la serie año anterior (no recorta KPIs/mapas con año "Todos"). */
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
   const [globalYear, setGlobalYear] = useState('all')
@@ -100,8 +101,9 @@ export default function DashboardPage() {
     refetch: refetchCases
   } = useCasesDataset({
     yearFilter: globalYear,
-    dateFrom,
-    dateTo,
+    /* Con año "Todos", el panel debe reflejar toda la base; el rango Desde/Hasta es solo del gráfico temporal. */
+    dateFrom: globalYear === 'all' ? '' : dateFrom,
+    dateTo: globalYear === 'all' ? '' : dateTo,
     sectorId,
     estadoFilter,
     generoFilter,
@@ -263,7 +265,7 @@ export default function DashboardPage() {
     return { mediana, conEdad: n }
   }, [cases])
 
-  /** Serie temporal por fecha de registro (cuenta de casos por día). */
+  /** Serie temporal completa del dataset cargado (todos los días con casos). */
   const casesSeries = useMemo(() => {
     if (!cases?.length) return []
     const m = new Map()
@@ -276,6 +278,12 @@ export default function DashboardPage() {
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([month, value]) => ({ month, value }))
   }, [cases])
+
+  /** Misma serie recortada al rango del gráfico temporal (export CSV coherente con lo que ves en el gráfico). */
+  const casesSeriesForChart = useMemo(() => {
+    if (!casesSeries.length || !dateFrom || !dateTo) return casesSeries
+    return casesSeries.filter((p) => p.month >= dateFrom && p.month <= dateTo)
+  }, [casesSeries, dateFrom, dateTo])
 
   /** Ranking por sector (cuenta + comuna). */
   const sectorRanking = useMemo(() => {
@@ -613,8 +621,8 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="dashboardExportBtn"
-                disabled={!casesSeries.length}
-                onClick={() => exportCasesSeriesCsv(casesSeries, `casos_temporal_${dateFrom}_${dateTo}.csv`)}
+                disabled={!casesSeriesForChart.length}
+                onClick={() => exportCasesSeriesCsv(casesSeriesForChart, `casos_temporal_${dateFrom}_${dateTo}.csv`)}
                 aria-label="Exportar serie temporal de casos a CSV"
               >
                 CSV — Casos
@@ -643,7 +651,7 @@ export default function DashboardPage() {
           <div className="dashboardChartsGrid">
             <div className="dashboardChartColumn dashboardChartColumn--full">
               <TendencyChart
-                casesData={casesSeries}
+                casesData={casesSeriesForChart}
                 prevCasesData={prevCasesSeries}
                 rangeFrom={dateFrom}
                 rangeTo={dateTo}
@@ -694,7 +702,9 @@ export default function DashboardPage() {
                 loading={casesLoading || sectorsLoading}
                 controls={
                   <p className="chartFilterNote">
-                    Datos del dataset filtrado (año, estado, género y edad del panel).
+                    Mismos filtros del panel (sector, estado, género, edad, ocupación). Con año{' '}
+                    <strong>Todos</strong> el conteo incluye toda la historia; el gráfico temporal usa el
+                    rango Desde/Hasta de esa tarjeta.
                   </p>
                 }
               />
