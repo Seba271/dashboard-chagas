@@ -1,5 +1,6 @@
 /**
- * Dashboard Chagas — orden: filtros → KPIs → análisis → mapa → seguimiento clínico.
+ * Dashboard epidemiológico (modelo anónimo, sin datos clínicos identificables).
+ * Orden: filtros → KPIs → análisis (temporal + sector + estado) → mapa → registro de caso.
  */
 
 'use client'
@@ -8,32 +9,31 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
-import { useKpiProgramFiltered } from '@/src/hooks/useKpiProgramFiltered'
-import { useCasesByDateRange } from '@/src/hooks/useCasesByDateRange'
-import { useCountsByComuna } from '@/src/hooks/useCountsByComuna'
-import { useMapPoints } from '@/src/hooks/useMapPoints'
-import { exportCasesSeriesCsv, exportComunaRankingCsv } from '@/lib/exportDashboardData'
+import { useSectors } from '@/src/hooks/useSectors'
+import { useCasesDataset } from '@/src/hooks/useCasesDataset'
+import { useOcupaciones } from '@/src/hooks/useOcupaciones'
+import { usePrevYearCases } from '@/src/hooks/usePrevYearCases'
+import {
+  exportCasesSeriesCsv,
+  exportSectorRankingCsv,
+  exportEstadoBreakdownCsv
+} from '@/lib/exportDashboardData'
 import { schedulePrintChartResize } from '@/lib/printEchartsResize'
+import { ESTADO_OPTIONS, ESTADO_LABEL, ESTADO_COLOR, ESTADO_VALUES } from '@/lib/caseEnums'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
-import ComunaBarChart from '@/src/components/Charts/ComunaBarChart'
-import ComunaRankingTable from '@/src/components/Charts/ComunaRankingTable'
+import SectorBarChart from '@/src/components/Charts/SectorBarChart'
+import SectorRankingTable from '@/src/components/Charts/SectorRankingTable'
+import AgeGenderPyramid from '@/src/components/Charts/AgeGenderPyramid'
+import SectorEstadoMatrix from '@/src/components/Charts/SectorEstadoMatrix'
 import DashboardGlobalFilters from '@/src/components/DashboardGlobalFilters'
-import FollowupAlertsSection from '@/src/components/FollowupAlertsSection'
-import FormsAppEmbed from '@/src/components/FormsAppEmbed'
 import dynamic from 'next/dynamic'
 
-const SimpleMap = dynamic(
-  () => import('@/src/components/Map/SimpleMap'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="dashboardMapLoading">Cargando mapa...</div>
-    )
-  }
-)
+const SimpleMap = dynamic(() => import('@/src/components/Map/SimpleMap'), {
+  ssr: false,
+  loading: () => <div className="dashboardMapLoading">Cargando mapa...</div>
+})
 
-/** Fecha local YYYY-MM-DD. */
 function toLocalDateISO(d) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -41,7 +41,6 @@ function toLocalDateISO(d) {
   return `${y}-${m}-${day}`
 }
 
-/** Hoy + N días (calendario local). */
 function todayPlusDaysLocal(days) {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -62,40 +61,20 @@ function getDefaultDates() {
   }
 }
 
-/** Primera fecha con datos en casos_por_fecha (KPI); el «Hasta» se fija aparte (hoy + 3 días). */
-function rangeFromCasosPorFecha(programKpi) {
-  const cpf = programKpi?.casos_por_fecha
-  if (!Array.isArray(cpf) || cpf.length === 0) return null
-  const fechas = cpf
-    .map((row) => {
-      const f = row?.fecha
-      if (typeof f === 'string') return f.slice(0, 10)
-      if (f instanceof Date) return f.toISOString().slice(0, 10)
-      return null
-    })
-    .filter(Boolean)
-    .sort()
-  if (fechas.length === 0) return null
-  return { from: fechas[0] }
-}
-
-function comunaMatches(selected, comuna) {
-  if (!selected || !String(selected).trim()) return true
-  return (comuna || '').trim().toLowerCase() === String(selected).trim().toLowerCase()
-}
-
-/** Ranking por comuna a partir de los puntos del mapa (misma fuente que get_map_points: año + tipo + sexo + edad). */
-function buildComunaRankingFromMapPoints(points) {
-  if (!points?.length) return []
-  const m = new Map()
-  for (const p of points) {
-    const raw = (p.comuna || '').trim()
-    const c = raw || 'Sin comuna'
-    m.set(c, (m.get(c) || 0) + 1)
-  }
-  return [...m.entries()]
-    .map(([comuna, value]) => ({ comuna, value }))
-    .sort((a, b) => b.value - a.value || a.comuna.localeCompare(b.comuna, 'es'))
+/** "hace 5 min", "hace 2 horas", "hace 3 días" o fecha exacta si es muy viejo. */
+function formatRelativeTime(iso, now = Date.now()) {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  const diffMs = Math.max(0, now - t)
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'hace unos segundos'
+  if (diffMin < 60) return `hace ${diffMin} min`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `hace ${diffHr} ${diffHr === 1 ? 'hora' : 'horas'}`
+  const diffDays = Math.floor(diffHr / 24)
+  if (diffDays < 30) return `hace ${diffDays} ${diffDays === 1 ? 'día' : 'días'}`
+  return new Date(iso).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 export default function DashboardPage() {
@@ -105,155 +84,91 @@ export default function DashboardPage() {
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
   const [globalYear, setGlobalYear] = useState('all')
-  const [globalComuna, setGlobalComuna] = useState('')
-  const [caseTypeFilter, setCaseTypeFilter] = useState('all')
-  const [sexFilter, setSexFilter] = useState('all')
+  const [sectorId, setSectorId] = useState('all')
+  const [estadoFilter, setEstadoFilter] = useState('all')
+  const [generoFilter, setGeneroFilter] = useState('all')
   const [ageGroupFilter, setAgeGroupFilter] = useState('all')
+  const [ocupacionFilter, setOcupacionFilter] = useState('all')
 
-  const mapYearFilter = globalYear === 'all' ? 'all' : globalYear
+  const { data: sectors, loading: sectorsLoading, error: sectorsError } = useSectors()
+  const { data: ocupaciones, loading: ocupacionesLoading } = useOcupaciones()
 
   const {
-    data: programKpi,
-    loading: programKpiLoading,
-    error: programKpiError
-  } = useKpiProgramFiltered(mapYearFilter, caseTypeFilter, sexFilter, ageGroupFilter, globalComuna)
-  const {
-    data: casesDataRaw,
+    data: cases,
     loading: casesLoading,
-    error: casesError
-  } = useCasesByDateRange(
+    error: casesError,
+    refetch: refetchCases
+  } = useCasesDataset({
+    yearFilter: globalYear,
     dateFrom,
     dateTo,
-    globalYear,
-    caseTypeFilter,
-    sexFilter,
+    sectorId,
+    estadoFilter,
+    generoFilter,
     ageGroupFilter,
-    globalComuna
-  )
-  const { data: comunaData, loading: comunaLoading, error: comunaError } = useCountsByComuna(
-    mapYearFilter,
-    caseTypeFilter,
-    sexFilter,
-    ageGroupFilter
-  )
+    ocupacionFilter
+  })
 
-  // Para recalcular porcentajes cuando hay comuna seleccionada.
-  // Sin comuna, los porcentajes usan la misma base filtrada que el mapa / conteos por comuna (no get_kpi_summary).
-  const { data: comunaCountsAll, loading: comunaCountsAllLoading, error: comunaCountsAllError } = useCountsByComuna(
-    mapYearFilter,
-    'all',
-    sexFilter,
-    ageGroupFilter
-  )
-  const { data: comunaCountsBajo, loading: comunaCountsBajoLoading, error: comunaCountsBajoError } = useCountsByComuna(
-    mapYearFilter,
-    'bajo_control',
-    sexFilter,
-    ageGroupFilter
-  )
-  const { data: comunaCountsAgudo, loading: comunaCountsAgudoLoading, error: comunaCountsAgudoError } = useCountsByComuna(
-    mapYearFilter,
-    'agudo',
-    sexFilter,
-    ageGroupFilter
-  )
-  const { data: comunaCountsGestantes, loading: comunaCountsGestantesLoading, error: comunaCountsGestantesError } = useCountsByComuna(
-    mapYearFilter,
-    'gestante',
-    sexFilter,
-    ageGroupFilter
-  )
+  /** Serie del período espejo del año anterior (para superponer en el gráfico temporal). */
+  const { series: prevCasesSeries } = usePrevYearCases({
+    yearFilter: globalYear,
+    dateFrom,
+    dateTo,
+    sectorId,
+    estadoFilter,
+    generoFilter,
+    ageGroupFilter,
+    ocupacionFilter
+  })
 
-  /** Una sola carga: todos los tipos; el mapa y el ranking filtran por tipo en cliente (categoría = tipo). */
-  const { data: geoPoints, loading: geoLoading, error: geoError, refetch: refetchMapPoints } = useMapPoints(
-    mapYearFilter,
-    'all',
-    sexFilter,
-    ageGroupFilter
-  )
-
-  const mapPointsForDisplay = useMemo(() => {
-    if (!geoPoints?.length) return []
-    if (caseTypeFilter === 'all') return geoPoints
-    return geoPoints.filter((p) => (p.category || '') === caseTypeFilter)
-  }, [geoPoints, caseTypeFilter])
-
-  // Refresco suave para KPIs basados en mapa (p.ej. "Casos nuevos (mes)").
-  // Sin realtime, el dashboard no detecta inserts en BD hasta recargar o refetchear.
+  /** Tick para que el "hace X min" del último update se actualice solo. */
+  const [nowTick, setNowTick] = useState(() => Date.now())
   useEffect(() => {
-    if (typeof refetchMapPoints !== 'function') return
+    const id = window.setInterval(() => setNowTick(Date.now()), 30000)
+    return () => window.clearInterval(id)
+  }, [])
 
-    const onFocus = () => refetchMapPoints()
+  /** Refresco suave (foco/visibilidad/intervalo) para reflejar inserts recientes. */
+  useEffect(() => {
+    if (typeof refetchCases !== 'function') return
+    const onFocus = () => refetchCases()
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') refetchMapPoints()
+      if (document.visibilityState === 'visible') refetchCases()
     }
-
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisibility)
-
-    const intervalId = window.setInterval(() => refetchMapPoints(), 30000)
-
+    const id = window.setInterval(() => refetchCases(), 60000)
     return () => {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
-      window.clearInterval(intervalId)
+      window.clearInterval(id)
     }
-  }, [refetchMapPoints])
+  }, [refetchCases])
 
-  /**
-   * Ajusta Desde/Hasta del gráfico temporal: si el KPI trae casos_por_fecha, «Desde» = primera fecha;
-   * «Hasta» = hoy + 3 días (acotado al 31 dic del año si hay año fijo). Sin KPI: «Todos» → últimos
-   * 12 meses hasta hoy+3; año fijo → 1 ene … min(31 dic, hoy+3).
-   */
+  /** Ajuste de Desde/Hasta cuando cambia el año. */
   useEffect(() => {
-    if (programKpiLoading) return
-
-    const r = rangeFromCasosPorFecha(programKpi)
-    if (r) {
-      setDateFrom(r.from)
-      const hasta = todayPlusDaysLocal(3)
-      if (globalYear === 'all') {
-        setDateTo(hasta)
-      } else {
-        const y = parseInt(globalYear, 10)
-        if (!Number.isNaN(y)) {
-          setDateTo(minDateStr(hasta, `${y}-12-31`))
-        }
-      }
-      return
-    }
-
     if (globalYear === 'all') {
       const d = getDefaultDates()
       setDateFrom(d.from)
       setDateTo(d.to)
       return
     }
-
     const y = parseInt(globalYear, 10)
     if (Number.isNaN(y)) return
     const hasta = todayPlusDaysLocal(3)
     setDateFrom(`${y}-01-01`)
     setDateTo(minDateStr(hasta, `${y}-12-31`))
-  }, [
-    globalYear,
-    programKpi,
-    programKpiLoading,
-    caseTypeFilter,
-    sexFilter,
-    ageGroupFilter,
-    globalComuna
-  ])
+  }, [globalYear])
 
   const resetFilters = useCallback(() => {
     setGlobalYear('all')
-    setGlobalComuna('')
-    setCaseTypeFilter('all')
-    setSexFilter('all')
+    setSectorId('all')
+    setEstadoFilter('all')
+    setGeneroFilter('all')
     setAgeGroupFilter('all')
+    setOcupacionFilter('all')
   }, [])
 
-  /** ECharts debe redimensionarse al imprimir (layout distinto al de pantalla). */
   useEffect(() => {
     const onBeforePrint = () => schedulePrintChartResize()
     const onAfterPrint = () => schedulePrintChartResize()
@@ -265,270 +180,163 @@ export default function DashboardPage() {
     }
   }, [])
 
-  /**
-   * Con año ≠ «Todos», el RPC get_counts_by_comuna a menudo no aplica p_year en la BD.
-   * Usamos la misma muestra que el mapa (get_map_points) para que el ranking coincida con año/tipo/sexo/edad.
-   */
-  const comunaRankingRows = useMemo(() => {
-    if (globalYear === 'all') return comunaData ?? []
-    return buildComunaRankingFromMapPoints(mapPointsForDisplay)
-  }, [globalYear, comunaData, mapPointsForDisplay])
+  const totalCasos = cases?.length ?? 0
 
-  const comunaSectionLoading = globalYear === 'all' ? comunaLoading : geoLoading
-  const comunaSectionError = globalYear === 'all' ? comunaError : geoError
-
-  const comunaOptions = useMemo(() => {
-    if (!comunaRankingRows?.length) return []
-    const set = new Set(comunaRankingRows.map((r) => r.comuna).filter(Boolean))
-    return [...set].sort((a, b) => a.localeCompare(b, 'es'))
-  }, [comunaRankingRows])
-
-  const comunaDataFiltered = useMemo(() => {
-    if (!comunaRankingRows?.length) return []
-    if (!globalComuna.trim()) return comunaRankingRows
-    return comunaRankingRows.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [comunaRankingRows, globalComuna])
-
-  const geoFiltered = useMemo(() => {
-    if (!mapPointsForDisplay?.length) return []
-    if (!globalComuna.trim()) return mapPointsForDisplay
-    return mapPointsForDisplay.filter((p) => comunaMatches(globalComuna, p.comuna))
-  }, [mapPointsForDisplay, globalComuna])
-
-  /**
-   * Con año fijo, «Total casos» y el mapa usan get_map_points; la serie usa fecha de registro
-   * (get_cases_by_date_range = creado_en, alineado a casos_por_fecha del KPI). Si el mapa no tiene
-   * puntos para ese año/filtro, vaciamos la serie para no contradecir el contador en cero.
-   */
-  const casesData = useMemo(() => {
-    if (globalYear === 'all') return casesDataRaw
-    if (geoLoading) return casesDataRaw
-    const noMapPoints = globalComuna.trim() ? geoFiltered.length === 0 : mapPointsForDisplay.length === 0
-    if (noMapPoints) return []
-    return casesDataRaw ?? []
-  }, [
-    globalYear,
-    geoLoading,
-    globalComuna,
-    geoFiltered,
-    mapPointsForDisplay,
-    casesDataRaw
-  ])
-
-  const casesChartLoading = casesLoading || (globalYear !== 'all' && geoLoading)
-
-  /** Puntos en la comuna elegida (todos los tipos) — para % cobertura con año filtrado. */
-  const geoInComunaAllTypes = useMemo(() => {
-    if (!globalComuna.trim() || !geoPoints?.length) return []
-    return geoPoints.filter((p) => comunaMatches(globalComuna, p.comuna))
-  }, [globalComuna, geoPoints])
-
-  const nuevosEsteMes = useMemo(() => {
-    // Con comuna: usamos los puntos del mapa para respetar el filtro (si el RPC trae comuna).
-    if (globalComuna.trim()) {
-      return geoFiltered.filter((p) => p.isNewCase).length
-    }
-
-    // Sin comuna: usamos la serie temporal (no depende de coordenadas/mapa).
-    const rows = casesData || []
-    if (!rows.length) return 0
+  /** Casos del mes en curso. */
+  const casosDelMes = useMemo(() => {
+    if (!cases?.length) return 0
     const now = new Date()
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    return rows
-      .filter((r) => typeof r.month === 'string' && r.month.startsWith(ym))
-      .reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [globalComuna, geoFiltered, casesData])
+    return cases.filter((c) => typeof c.fecha_registro === 'string' && c.fecha_registro.startsWith(ym)).length
+  }, [cases])
 
-  const sumRankingValues = useCallback((rows) => (rows || []).reduce((s, r) => s + (Number(r.value) || 0), 0), [])
-
-  /**
-   * Total casos (Chagas) alineado a filtros del panel: año, tipo, sexo, edad y comuna.
-   * Misma base que mapa + ranking (get_map_points con año fijo; get_counts_by_comuna con «Todos»).
-   */
-  const totalCasosDisplay = useMemo(() => {
-    if (globalComuna.trim()) {
-      if (globalYear !== 'all') return geoFiltered.length
-      return sumRankingValues(comunaDataFiltered)
+  /** Conteo por estado. */
+  const estadoCounts = useMemo(() => {
+    const acc = ESTADO_VALUES.reduce((m, k) => ({ ...m, [k]: 0 }), {})
+    for (const c of cases || []) {
+      if (acc[c.estado_actual] !== undefined) acc[c.estado_actual]++
     }
-    if (globalYear !== 'all') return mapPointsForDisplay.length
-    return sumRankingValues(comunaData)
-  }, [
-    globalComuna,
-    globalYear,
-    geoFiltered,
-    comunaDataFiltered,
-    mapPointsForDisplay,
-    comunaData,
-    sumRankingValues
-  ])
+    return acc
+  }, [cases])
 
-  const totalCasosFilteredLoading = useMemo(() => {
-    if (globalYear !== 'all') return geoLoading
-    return comunaLoading
-  }, [globalYear, geoLoading, comunaLoading])
+  const estadoBreakdown = useMemo(
+    () =>
+      ESTADO_OPTIONS.map((o) => ({
+        estado: o.value,
+        label: o.label,
+        value: estadoCounts[o.value] || 0,
+        color: ESTADO_COLOR[o.value]
+      })),
+    [estadoCounts]
+  )
 
-  const totalCasosCardSubtitle = useMemo(() => {
+  /** Indicadores operativos: cuántos casos quedan abiertos y cobertura del programa. */
+  const casosSinTratar = (estadoCounts.nuevo || 0) + (estadoCounts.reingreso || 0)
+  const coberturaPct = totalCasos > 0 ? ((estadoCounts.tratado || 0) / totalCasos) * 100 : 0
+
+  /** Última actualización del dataset (max actualizado_en o creado_en). */
+  const lastUpdatedAt = useMemo(() => {
+    if (!cases?.length) return null
+    let max = null
+    for (const c of cases) {
+      const t = c.actualizado_en || c.creado_en
+      if (!t) continue
+      if (!max || t > max) max = t
+    }
+    return max
+  }, [cases])
+
+  const lastUpdatedRelative = useMemo(
+    () => formatRelativeTime(lastUpdatedAt, nowTick),
+    [lastUpdatedAt, nowTick]
+  )
+
+  const lastUpdatedAbsolute = useMemo(() => {
+    if (!lastUpdatedAt) return null
+    try {
+      return new Date(lastUpdatedAt).toLocaleString('es-CL', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      })
+    } catch (e) {
+      return null
+    }
+  }, [lastUpdatedAt])
+
+  /** Si pasaron más de 24 horas, marcamos el badge como "stale" (color naranja). */
+  const lastUpdatedIsStale = useMemo(() => {
+    if (!lastUpdatedAt) return false
+    const diff = nowTick - new Date(lastUpdatedAt).getTime()
+    return Number.isFinite(diff) && diff > 24 * 60 * 60 * 1000
+  }, [lastUpdatedAt, nowTick])
+
+  /** Edad mediana del dataset filtrado (entera, redondeada). */
+  const edadStats = useMemo(() => {
+    const edades = (cases || [])
+      .map((c) => Number(c.edad))
+      .filter((n) => Number.isFinite(n) && n >= 0)
+      .sort((a, b) => a - b)
+    const n = edades.length
+    if (n === 0) return { mediana: null, conEdad: 0 }
+    const mid = Math.floor(n / 2)
+    const mediana = n % 2 === 0 ? Math.round((edades[mid - 1] + edades[mid]) / 2) : edades[mid]
+    return { mediana, conEdad: n }
+  }, [cases])
+
+  /** Serie temporal por fecha de registro (cuenta de casos por día). */
+  const casesSeries = useMemo(() => {
+    if (!cases?.length) return []
+    const m = new Map()
+    for (const c of cases) {
+      const key = typeof c.fecha_registro === 'string' ? c.fecha_registro.slice(0, 10) : null
+      if (!key) continue
+      m.set(key, (m.get(key) || 0) + 1)
+    }
+    return [...m.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([month, value]) => ({ month, value }))
+  }, [cases])
+
+  /** Ranking por sector (cuenta + comuna). */
+  const sectorRanking = useMemo(() => {
+    if (!cases?.length) return []
+    const m = new Map()
+    for (const c of cases) {
+      const key = c.id_sector
+      if (key == null) continue
+      const prev = m.get(key)
+      if (prev) {
+        prev.value += 1
+      } else {
+        m.set(key, {
+          id_sector: key,
+          sector: c.sector_nombre || `Sector ${key}`,
+          comuna: c.sector_comuna || '',
+          value: 1,
+          lat: c.sector_lat,
+          lon: c.sector_lon
+        })
+      }
+    }
+    return [...m.values()].sort((a, b) => b.value - a.value || (a.sector || '').localeCompare(b.sector || '', 'es'))
+  }, [cases])
+
+  /** Sectores con coordenadas válidas (todos los activos, para que el Voronoi divida bien el territorio). */
+  const mapSectors = useMemo(() => {
+    return (sectors || []).filter(
+      (s) =>
+        typeof s.latitud_centroide === 'number' &&
+        typeof s.longitud_centroide === 'number' &&
+        !Number.isNaN(s.latitud_centroide) &&
+        !Number.isNaN(s.longitud_centroide)
+    )
+  }, [sectors])
+
+  /** % por estado sobre total filtrado. */
+  const pct = useCallback(
+    (n) => (totalCasos > 0 ? (n / totalCasos) * 100 : 0),
+    [totalCasos]
+  )
+
+  const filterSummary = useMemo(() => {
     const parts = []
     if (globalYear !== 'all') parts.push(`Año ${globalYear}`)
     else parts.push('Todos los años')
-    if (caseTypeFilter !== 'all') parts.push(`Tipo: ${caseTypeFilter}`)
-    if (sexFilter !== 'all') parts.push(`Sexo: ${sexFilter}`)
+    if (sectorId && sectorId !== 'all') {
+      const s = (sectors || []).find((x) => String(x.id_sector) === String(sectorId))
+      parts.push(`Sector: ${s?.nombre_sector ?? sectorId}`)
+    } else {
+      parts.push('Todos los sectores')
+    }
+    if (estadoFilter !== 'all') parts.push(`Estado: ${ESTADO_LABEL[estadoFilter] || estadoFilter}`)
+    if (generoFilter !== 'all') parts.push(`Género: ${generoFilter}`)
     if (ageGroupFilter !== 'all') parts.push(`Edad: ${ageGroupFilter}`)
-    if (globalComuna.trim()) parts.push(`Comuna: ${globalComuna.trim()}`)
-    else parts.push('Región (suma comunas / mapa)')
+    if (ocupacionFilter && ocupacionFilter !== 'all') {
+      const o = (ocupaciones || []).find((x) => x.value === ocupacionFilter)
+      parts.push(`Ocupación: ${o?.label ?? ocupacionFilter}`)
+    }
     return parts.join(' · ')
-  }, [globalYear, caseTypeFilter, sexFilter, ageGroupFilter, globalComuna])
-
-  /**
-   * Con año fijo, bajo/agudo/gestantes deben coincidir con get_map_points (mismo criterio que total casos).
-   * El RPC get_kpi_program_filtered puede desalinearse; exámenes/inasist./trat. siguen en BD y se anulan si el mapa no trae casos en ese año/filtro.
-   */
-  const programVigilanciaLoading =
-    globalYear !== 'all' ? geoLoading || programKpiLoading : programKpiLoading
-
-  const programVigilanciaTotals = useMemo(() => {
-    if (globalYear === 'all') {
-      return {
-        total_bajo_control: programKpi?.total_bajo_control ?? 0,
-        total_agudo: programKpi?.total_agudo ?? 0,
-        total_gestantes: programKpi?.total_gestantes ?? 0,
-        total_examenes: programKpi?.total_examenes ?? 0,
-        total_inasistentes: programKpi?.total_inasistentes ?? 0,
-        total_tratamientos: programKpi?.total_tratamientos ?? 0
-      }
-    }
-    if (geoLoading) {
-      return {
-        total_bajo_control: 0,
-        total_agudo: 0,
-        total_gestantes: 0,
-        total_examenes: 0,
-        total_inasistentes: 0,
-        total_tratamientos: 0
-      }
-    }
-    const pts = (geoPoints || []).filter((p) =>
-      globalComuna.trim() ? comunaMatches(globalComuna, p.comuna) : true
-    )
-    const byCat = (cat) => pts.filter((p) => (p.category || '') === cat).length
-    const noMapCases = pts.length === 0
-    return {
-      total_bajo_control: byCat('bajo_control'),
-      total_agudo: byCat('agudo'),
-      total_gestantes: byCat('gestante'),
-      total_examenes: noMapCases ? 0 : (programKpi?.total_examenes ?? 0),
-      total_inasistentes: noMapCases ? 0 : (programKpi?.total_inasistentes ?? 0),
-      total_tratamientos: noMapCases ? 0 : (programKpi?.total_tratamientos ?? 0)
-    }
-  }, [globalYear, geoLoading, geoPoints, globalComuna, programKpi])
-
-  const refRegional = !!globalComuna.trim()
-
-  const selectedCountsAll = useMemo(() => {
-    if (!refRegional) return []
-    if (globalYear !== 'all') {
-      const n = geoInComunaAllTypes.length
-      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
-    }
-    if (!comunaCountsAll?.length) return []
-    return comunaCountsAll.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsAll])
-
-  const selectedCountsBajo = useMemo(() => {
-    if (!refRegional) return []
-    if (globalYear !== 'all') {
-      const n = geoInComunaAllTypes.filter((p) => p.category === 'bajo_control').length
-      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
-    }
-    if (!comunaCountsBajo?.length) return []
-    return comunaCountsBajo.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsBajo])
-
-  const selectedCountsAgudo = useMemo(() => {
-    if (!refRegional) return []
-    if (globalYear !== 'all') {
-      const n = geoInComunaAllTypes.filter((p) => p.category === 'agudo').length
-      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
-    }
-    if (!comunaCountsAgudo?.length) return []
-    return comunaCountsAgudo.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsAgudo])
-
-  const selectedCountsGestantes = useMemo(() => {
-    if (!refRegional) return []
-    if (globalYear !== 'all') {
-      const n = geoInComunaAllTypes.filter((p) => p.category === 'gestante').length
-      return n ? [{ comuna: globalComuna.trim(), value: n }] : []
-    }
-    if (!comunaCountsGestantes?.length) return []
-    return comunaCountsGestantes.filter((r) => comunaMatches(globalComuna, r.comuna))
-  }, [refRegional, globalYear, geoInComunaAllTypes, globalComuna, comunaCountsGestantes])
-
-  const totalCasosForPercent = useMemo(() => {
-    if (!refRegional) {
-      if (globalYear !== 'all') return geoPoints?.length ?? 0
-      return sumRankingValues(comunaCountsAll)
-    }
-    if (globalYear !== 'all') return geoInComunaAllTypes.length
-    return totalCasosDisplay
-  }, [
-    refRegional,
-    globalYear,
-    geoPoints,
-    comunaCountsAll,
-    geoInComunaAllTypes,
-    totalCasosDisplay,
-    sumRankingValues
-  ])
-
-  const bajoForPercent = useMemo(() => {
-    if (!refRegional) {
-      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'bajo_control').length
-      return sumRankingValues(comunaCountsBajo)
-    }
-    return selectedCountsBajo.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, globalYear, geoPoints, comunaCountsBajo, selectedCountsBajo, sumRankingValues])
-
-  const agudoForPercent = useMemo(() => {
-    if (!refRegional) {
-      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'agudo').length
-      return sumRankingValues(comunaCountsAgudo)
-    }
-    return selectedCountsAgudo.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, globalYear, geoPoints, comunaCountsAgudo, selectedCountsAgudo, sumRankingValues])
-
-  const gestantesForPercent = useMemo(() => {
-    if (!refRegional) {
-      if (globalYear !== 'all') return (geoPoints || []).filter((p) => p.category === 'gestante').length
-      return sumRankingValues(comunaCountsGestantes)
-    }
-    return selectedCountsGestantes.reduce((s, r) => s + (Number(r.value) || 0), 0)
-  }, [refRegional, globalYear, geoPoints, comunaCountsGestantes, selectedCountsGestantes, sumRankingValues])
-
-  const loadingPercentages = refRegional
-    ? globalYear !== 'all'
-      ? geoLoading
-      : comunaLoading ||
-        comunaCountsAllLoading ||
-        comunaCountsBajoLoading ||
-        comunaCountsAgudoLoading ||
-        comunaCountsGestantesLoading
-    : globalYear !== 'all'
-      ? geoLoading
-      : comunaLoading ||
-        comunaCountsAllLoading ||
-        comunaCountsBajoLoading ||
-        comunaCountsAgudoLoading ||
-        comunaCountsGestantesLoading
-
-  const kpiPercentages = useMemo(
-    () => ({
-      pctBajoControl: totalCasosForPercent ? (bajoForPercent / totalCasosForPercent) * 100 : 0,
-      pctAgudo: totalCasosForPercent ? (agudoForPercent / totalCasosForPercent) * 100 : 0,
-      pctGestantes: totalCasosForPercent ? (gestantesForPercent / totalCasosForPercent) * 100 : 0
-    }),
-    [totalCasosForPercent, bajoForPercent, agudoForPercent, gestantesForPercent]
-  )
+  }, [globalYear, sectorId, sectors, estadoFilter, generoFilter, ageGroupFilter, ocupacionFilter, ocupaciones])
 
   const handleLogout = async () => {
     try {
@@ -568,14 +376,24 @@ export default function DashboardPage() {
   return (
     <div className="dashboard-shell dashboardPageRoot">
       <div className="print-only printHeader">
-        <h1>Dashboard Chagas — Resumen</h1>
+        <h1>Dashboard Chagas — Resumen epidemiológico</h1>
         <p>{new Date().toLocaleString('es-CL', { dateStyle: 'long', timeStyle: 'short' })}</p>
       </div>
 
       <header className="dashboardPageHeader no-print">
         <div className="dashboardPageHeaderTitles">
           <h1>Dashboard Chagas</h1>
-          <p>Región de Coquimbo — Indicadores epidemiológicos</p>
+          <p>Registro epidemiológico anónimo — Monte Patria</p>
+          {lastUpdatedRelative && (
+            <span
+              className={`dashboardLastUpdated${lastUpdatedIsStale ? ' dashboardLastUpdated--stale' : ''}`}
+              title={lastUpdatedAbsolute || ''}
+              aria-label={`Datos actualizados ${lastUpdatedRelative}${lastUpdatedAbsolute ? ` — ${lastUpdatedAbsolute}` : ''}`}
+            >
+              <span className="dashboardLastUpdatedDot" aria-hidden />
+              Actualizado {lastUpdatedRelative}
+            </span>
+          )}
         </div>
         <div className="dashboardPageHeaderActions">
           <button
@@ -601,198 +419,191 @@ export default function DashboardPage() {
         <DashboardGlobalFilters
           globalYear={globalYear}
           onGlobalYearChange={setGlobalYear}
-          globalComuna={globalComuna}
-          onGlobalComunaChange={setGlobalComuna}
-          comunaOptions={comunaOptions}
-          caseTypeFilter={caseTypeFilter}
-          onCaseTypeChange={setCaseTypeFilter}
-          sexFilter={sexFilter}
-          onSexChange={setSexFilter}
+          sectorId={sectorId}
+          onSectorChange={setSectorId}
+          sectorOptions={sectors || []}
+          estadoFilter={estadoFilter}
+          onEstadoChange={setEstadoFilter}
+          generoFilter={generoFilter}
+          onGeneroChange={setGeneroFilter}
           ageGroupFilter={ageGroupFilter}
           onAgeGroupChange={setAgeGroupFilter}
+          ocupacionFilter={ocupacionFilter}
+          onOcupacionChange={setOcupacionFilter}
+          ocupacionOptions={ocupaciones || []}
+          ocupacionLoading={ocupacionesLoading}
           onResetFilters={resetFilters}
         />
 
-        {/* 2. KPIs agrupados */}
+        {/* 2. KPIs */}
         <section className="dashboardSection" aria-labelledby="kpi-heading">
           <div className="dashboardSectionHead">
             <h2 id="kpi-heading" className="dashboardSectionTitle">
-              Indicadores principales
+              Indicadores epidemiológicos
             </h2>
-            <div className="dashboardSectionLeadRow no-print">
-              <span className="dashboardSectionLeadLabel">Fuentes de cada bloque</span>
+          </div>
+
+          {(casesError || sectorsError) && (
+            <div className="dashboardErrorBox">
+              {casesError ? `Error al cargar casos: ${casesError}` : ''}
+              {sectorsError ? ` Error al cargar sectores: ${sectorsError}` : ''}
+            </div>
+          )}
+
+          <div className="dashboardKpiGroup">
+            <h3 className="dashboardSubsectionTitle">Casos</h3>
+            <div className="kpiGrid">
+              <KpiCard
+                title="Total casos"
+                value={totalCasos}
+                icon="🗂️"
+                color="#0d9488"
+                loading={casesLoading}
+                subtitle={filterSummary}
+              />
+              <KpiCard
+                title="Casos del mes"
+                value={casosDelMes}
+                icon="📅"
+                color="#0ea5e9"
+                loading={casesLoading}
+                subtitle="Mes calendario actual"
+              />
+            </div>
+          </div>
+
+          <div className="dashboardKpiGroup">
+            <h3 className="dashboardSubsectionTitle">Distribución por estado</h3>
+            <div className="kpiGrid">
+              {estadoBreakdown.map((row) => (
+                <KpiCard
+                  key={row.estado}
+                  title={row.label}
+                  value={casesLoading ? 'Cargando...' : `${row.value.toLocaleString('es-CL')} (${pct(row.value).toFixed(1)} %)`}
+                  icon={row.estado === 'nuevo' ? '✨' : row.estado === 'reingreso' ? '↩️' : '✅'}
+                  color={row.color}
+                  loading={casesLoading}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="dashboardKpiGroup">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h3 className="dashboardSubsectionTitle" style={{ margin: 0 }}>
+                Indicadores operativos
+              </h3>
               <span className="dashboardInfoTooltip">
                 <button
                   type="button"
                   className="dashboardInfoTooltipBtn"
-                  aria-label="Ver cómo se relacionan los indicadores con el panel y el gráfico"
-                  aria-describedby="kpi-main-sources-tooltip"
+                  aria-label="Ver definición de los indicadores operativos"
+                  aria-describedby="ops-info-tooltip"
                 >
                   i
                 </button>
-                <span id="kpi-main-sources-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                  El total de la primera tarjeta, las proporciones de cobertura y el bloque &quot;Programa y
-                  vigilancia&quot; siguen año, tipo, sexo, edad y comuna del panel (vía mapa / ranking y base de datos).
-                  La serie temporal y &quot;Casos nuevos&quot; siguen el gráfico.
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {refRegional && (
-            <p className="dashboard-kpi-hint no-print">
-              Con comuna, el total, las proporciones y los KPI de programa se limitan a esa comuna.
-            </p>
-          )}
-
-          {programKpiError && (
-            <div className="dashboardErrorBox">Error al cargar KPIs de programa: {programKpiError}</div>
-          )}
-
-          <div className="dashboardKpiGroup">
-            <h3 className="dashboardSubsectionTitle">Casos y dinámica</h3>
-            <div className="kpiGrid">
-              <KpiCard
-                title="Total casos (Chagas)"
-                value={totalCasosDisplay}
-                icon="👥"
-                color="#0d9488"
-                loading={totalCasosFilteredLoading}
-                subtitle={totalCasosCardSubtitle}
-              />
-              <KpiCard
-                title="Casos nuevos (mes)"
-                value={nuevosEsteMes}
-                icon="✨"
-                color="#0d9488"
-                loading={globalComuna.trim() ? geoLoading : casesLoading}
-                subtitle={globalComuna.trim() ? 'Mes actual (mapa filtrado por comuna)' : 'Mes actual (serie temporal)'}
-              />
-            </div>
-          </div>
-
-          <div className="dashboardKpiGroup">
-            <div className="dashboardSubsectionTitleRow">
-              <h3 className="dashboardSubsectionTitle">Programa y vigilancia</h3>
-              <span className="dashboardInfoTooltip no-print">
-                <button
-                  type="button"
-                  className="dashboardInfoTooltipBtn"
-                  aria-label="Ver cómo se calculan las tarjetas de programa y vigilancia"
-                  aria-describedby="programa-vigilancia-tooltip"
+                <span
+                  id="ops-info-tooltip"
+                  role="tooltip"
+                  className="dashboardInfoTooltipBubble"
                 >
-                  i
-                </button>
-                <span id="programa-vigilancia-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                  Con año fijado, bajo control, agudos y gestantes cuentan igual que los puntos del mapa. Exámenes,
-                  inasistencias y tratamientos salen de la base; si para ese año no hay ningún caso en el mapa con los
-                  filtros actuales, esas tres tarjetas se muestran en 0. Con «Todos» en año, las seis tarjetas siguen el
-                  resumen filtrado en el servidor.
+                  <strong>Casos sin tratar:</strong> suma de casos en estado{' '}
+                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>nuevo</span> y{' '}
+                  <span style={{ color: '#fcd34d', fontWeight: 600 }}>reingreso</span> — son los que
+                  el programa todavía debe atender.{' '}
+                  <strong>Cobertura del programa:</strong> porcentaje de casos en estado{' '}
+                  <span style={{ color: '#86efac', fontWeight: 600 }}>tratado</span> sobre el total
+                  filtrado. <strong>Edad mediana:</strong> mitad de los casos tiene edad inferior y
+                  mitad superior a este valor.
                 </span>
               </span>
             </div>
-            <div className="kpiGrid">
+            <div className="kpiGrid" style={{ marginTop: '0.65rem' }}>
               <KpiCard
-                title="Total exámenes"
-                value={programVigilanciaTotals.total_examenes || 0}
-                icon="🔬"
-                color="#0d9488"
-                loading={programVigilanciaLoading}
-              />
-              <KpiCard
-                title="Bajo control"
-                value={programVigilanciaTotals.total_bajo_control || 0}
-                icon="✅"
-                color="#0d9488"
-                loading={programVigilanciaLoading}
-              />
-              <KpiCard
-                title="Casos agudos"
-                value={programVigilanciaTotals.total_agudo || 0}
+                title="Casos sin tratar"
+                value={casosSinTratar}
                 icon="⚠️"
-                color="#f59e0b"
-                loading={programVigilanciaLoading}
+                color="#dc2626"
+                loading={casesLoading}
+                subtitle="Nuevos + reingresos del filtro"
               />
               <KpiCard
-                title="Gestantes"
-                value={programVigilanciaTotals.total_gestantes || 0}
-                icon="🤰"
-                color="#0d9488"
-                loading={programVigilanciaLoading}
+                title="Cobertura del programa"
+                value={
+                  casesLoading
+                    ? 'Cargando...'
+                    : totalCasos > 0
+                      ? `${coberturaPct.toFixed(1)} %`
+                      : '—'
+                }
+                icon="🎯"
+                color="#16a34a"
+                loading={casesLoading}
+                subtitle={
+                  totalCasos > 0
+                    ? `${(estadoCounts.tratado || 0).toLocaleString('es-CL')} de ${totalCasos.toLocaleString('es-CL')} tratados`
+                    : 'Sin casos en el filtro'
+                }
               />
               <KpiCard
-                title="Inasistentes"
-                value={programVigilanciaTotals.total_inasistentes || 0}
-                icon="📅"
-                color="#ef4444"
-                loading={programVigilanciaLoading}
-              />
-              <KpiCard
-                title="Tratamientos"
-                value={programVigilanciaTotals.total_tratamientos || 0}
-                icon="💊"
-                color="#0d9488"
-                loading={programVigilanciaLoading}
-              />
-            </div>
-          </div>
-
-          <div className="dashboardKpiGroup">
-            <div className="dashboardSubsectionTitleRow">
-              <h3 className="dashboardSubsectionTitle">Cobertura por condición</h3>
-              <span className="dashboardInfoTooltip no-print">
-                <button
-                  type="button"
-                  className="dashboardInfoTooltipBtn"
-                  aria-label="Ver explicación de proporciones solapadas"
-                  aria-describedby="coverage-overlap-tooltip"
-                >
-                  i
-                </button>
-                <span id="coverage-overlap-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                  Una persona puede aparecer en más de una condición (por ejemplo, gestante y bajo control), por eso
-                  estos porcentajes no necesariamente suman 100%.
-                </span>
-              </span>
-            </div>
-            <div className="kpiGrid">
-              <KpiCard
-                title="% Bajo control"
-                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctBajoControl.toFixed(1)} %`}
-                icon="📈"
-                color="#0d9488"
-                loading={loadingPercentages}
-                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
-              />
-              <KpiCard
-                title="% Casos agudos"
-                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctAgudo.toFixed(1)} %`}
-                icon="⚠️"
-                color="#f97316"
-                loading={loadingPercentages}
-                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
-              />
-              <KpiCard
-                title="% Gestantes"
-                value={loadingPercentages || !totalCasosForPercent ? 'N/A' : `${kpiPercentages.pctGestantes.toFixed(1)} %`}
-                icon="🤰"
-                color="#0ea5e9"
-                loading={loadingPercentages}
-                subtitle={refRegional ? 'Filtrado por comuna' : undefined}
+                title="Edad mediana"
+                value={edadStats.mediana != null ? `${edadStats.mediana} años` : '—'}
+                icon="🧬"
+                color="#7c3aed"
+                loading={casesLoading}
+                subtitle={
+                  edadStats.conEdad > 0
+                    ? `Sobre ${edadStats.conEdad.toLocaleString('es-CL')} ${edadStats.conEdad === 1 ? 'caso' : 'casos'} con edad`
+                    : 'Sin edades registradas'
+                }
               />
             </div>
           </div>
         </section>
 
-        {/* 3. Análisis: temporal + comunas */}
+        {/* 3. Demografía: pirámide poblacional */}
+        <section className="dashboardSection" aria-labelledby="demo-heading">
+          <div className="dashboardSectionHead">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 id="demo-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>
+                Distribución demográfica
+              </h2>
+              <span className="dashboardInfoTooltip">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver cómo leer la pirámide poblacional"
+                  aria-describedby="demo-info-tooltip"
+                >
+                  i
+                </button>
+                <span
+                  id="demo-info-tooltip"
+                  role="tooltip"
+                  className="dashboardInfoTooltipBubble"
+                >
+                  Casos del filtro distribuidos por grupo etario y género (
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>masculino</span> a la
+                  izquierda,{' '}
+                  <span style={{ color: '#f9a8d4', fontWeight: 600 }}>femenino</span> a la derecha).
+                  Los casos de otro género o sin edad se contabilizan al pie del gráfico para no
+                  distorsionar la lectura clásica de la pirámide.
+                </span>
+              </span>
+            </div>
+          </div>
+          <AgeGenderPyramid cases={cases || []} loading={casesLoading} />
+        </section>
+
+        {/* 4. Análisis: temporal + sectores */}
         <section className="dashboardSection dashboardAnalysisSection" aria-labelledby="analysis-heading">
           <div className="dashboardSectionActionsRow dashboardAnalysisHead">
             <div>
               <h2 id="analysis-heading" className="dashboardSectionTitle">
-                Análisis temporal y por comuna
+                Análisis temporal y por sector
               </h2>
               <p className="dashboardSectionLead dashboardSectionLeadTight">
-                Serie de casos, distribución por comuna y tabla ordenable.
+                Serie de casos por fecha de registro, ranking por sector y distribución por estado.
               </p>
               <p className="print-only printPeriodLine">
                 <strong>Período del gráfico temporal:</strong> {dateFrom} al {dateTo}
@@ -802,14 +613,8 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="dashboardExportBtn"
-                disabled={!casesData?.length}
-                onClick={() =>
-                  exportCasesSeriesCsv(
-                    casesData || [],
-                    [],
-                    `casos_temporal_${dateFrom}_${dateTo}.csv`
-                  )
-                }
+                disabled={!casesSeries.length}
+                onClick={() => exportCasesSeriesCsv(casesSeries, `casos_temporal_${dateFrom}_${dateTo}.csv`)}
                 aria-label="Exportar serie temporal de casos a CSV"
               >
                 CSV — Casos
@@ -817,32 +622,34 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="dashboardExportBtn"
-                disabled={!comunaDataFiltered?.length}
-                onClick={() =>
-                  exportComunaRankingCsv(comunaDataFiltered || [], `casos_por_comuna_${mapYearFilter}.csv`)
-                }
-                aria-label="Exportar ranking por comuna a CSV"
+                disabled={!sectorRanking.length}
+                onClick={() => exportSectorRankingCsv(sectorRanking, `casos_por_sector_${globalYear}.csv`)}
+                aria-label="Exportar ranking por sector a CSV"
               >
-                CSV — Comunas
+                CSV — Sectores
+              </button>
+              <button
+                type="button"
+                className="dashboardExportBtn"
+                disabled={!estadoBreakdown.some((r) => r.value > 0)}
+                onClick={() => exportEstadoBreakdownCsv(estadoBreakdown, `casos_por_estado_${globalYear}.csv`)}
+                aria-label="Exportar distribución por estado a CSV"
+              >
+                CSV — Estado
               </button>
             </div>
           </div>
 
           <div className="dashboardChartsGrid">
-            <div className="dashboardChartColumn">
-              {casesError && (
-                <div className="dashboardErrorBox">
-                  {`Error casos: ${casesError}`}
-                </div>
-              )}
+            <div className="dashboardChartColumn dashboardChartColumn--full">
               <TendencyChart
-                casesData={casesData || []}
-                prevCasesData={[]}
+                casesData={casesSeries}
+                prevCasesData={prevCasesSeries}
                 rangeFrom={dateFrom}
                 rangeTo={dateTo}
                 title="Casos en el tiempo"
                 type="line"
-                loading={casesChartLoading}
+                loading={casesLoading}
                 controls={
                   <div className="chartControls chartControlsDates">
                     <label className="chartControlsLabel" htmlFor="dash-date-from">
@@ -876,49 +683,103 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="dashboardChartColumn">
-              {comunaSectionError && <div className="dashboardErrorBox">Error: {comunaSectionError}</div>}
-              <ComunaBarChart
-                data={comunaDataFiltered || []}
-                title={globalComuna ? `Casos por comuna — ${globalComuna}` : 'Casos por comuna'}
-                loading={comunaSectionLoading}
+            <div className="dashboardChartColumn dashboardChartColumn--barWide">
+              <SectorBarChart
+                data={sectorRanking}
+                title={
+                  sectorId !== 'all'
+                    ? `Casos en sector seleccionado`
+                    : 'Casos por sector'
+                }
+                loading={casesLoading || sectorsLoading}
                 controls={
                   <p className="chartFilterNote">
-                    {globalYear === 'all'
-                      ? 'Tipo, sexo y edad: filtros del panel superior (datos desde ranking).'
-                      : 'Misma muestra que el mapa para el año y filtros elegidos (puntos geográficos).'}
+                    Datos del dataset filtrado (año, estado, género y edad del panel).
                   </p>
                 }
               />
             </div>
 
-            <div className="dashboardChartColumn dashboardChartColumn--full">
-              <ComunaRankingTable data={comunaDataFiltered || []} loading={comunaSectionLoading} />
+            <div className="dashboardChartColumn dashboardChartColumn--rankNarrow">
+              <SectorRankingTable
+                data={sectorRanking}
+                loading={casesLoading || sectorsLoading}
+                compact
+              />
             </div>
           </div>
         </section>
 
-        {/* 4. Mapa */}
+        {/* 5. Sectores con casos pendientes */}
+        <section className="dashboardSection" aria-labelledby="matrix-heading">
+          <div className="dashboardSectionHead">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 id="matrix-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>
+                Sectores con casos pendientes
+              </h2>
+              <span className="dashboardInfoTooltip">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver cómo leer la matriz de sectores y estados"
+                  aria-describedby="matrix-info-tooltip"
+                >
+                  i
+                </button>
+                <span
+                  id="matrix-info-tooltip"
+                  role="tooltip"
+                  className="dashboardInfoTooltipBubble"
+                >
+                  Cada celda muestra cuántos casos hay en ese sector para cada estado. La
+                  intensidad del color es relativa al máximo de la columna — cuanto más oscura,
+                  más casos. La columna{' '}
+                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>Sin tratar</span> destaca los
+                  sectores prioritarios (suma de nuevo + reingreso). Hacé clic en una columna para
+                  ordenar por ese estado.
+                </span>
+              </span>
+            </div>
+          </div>
+          <SectorEstadoMatrix cases={cases || []} loading={casesLoading} />
+        </section>
+
+        {/* 6. Mapa territorial por sector */}
         <section className="dashboardSection dashboardMapSection no-print" aria-labelledby="map-heading">
           <div className="dashboardSectionHead">
-            <h2 id="map-heading" className="dashboardSectionTitle">
-              Mapa geográfico
-            </h2>
-            <p className="dashboardSectionLead">Puntos según filtros de año y perfil del caso; comuna recorta en pantalla.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 id="map-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>
+                Mapa territorial por sector
+              </h2>
+              <span className="dashboardInfoTooltip">
+                <button
+                  type="button"
+                  className="dashboardInfoTooltipBtn"
+                  aria-label="Ver cómo leer el mapa territorial"
+                  aria-describedby="map-info-tooltip"
+                >
+                  i
+                </button>
+                <span id="map-info-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
+                  Cada sector se oscurece según su volumen de casos. Los puntos son casos
+                  individuales con posición aleatoria dentro del sector y color por estado
+                  (<span style={{ color: '#fca5a5', fontWeight: 600 }}>rojo: nuevo</span>,{' '}
+                  <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarillo: reingreso</span>,{' '}
+                  <span style={{ color: '#86efac', fontWeight: 600 }}>verde: tratado</span>).
+                  Datos anónimos y agregados.
+                </span>
+              </span>
+            </div>
           </div>
-          {geoError && <div className="dashboardErrorBox">Error al cargar puntos: {geoError}</div>}
           <div className="dashboardMapCard">
-            <SimpleMap points={geoFiltered || []} loading={geoLoading} />
+            <SimpleMap
+              sectors={mapSectors}
+              cases={cases || []}
+              loading={casesLoading || sectorsLoading}
+            />
           </div>
         </section>
 
-        {/* 5. Seguimiento clínico (último bloque operativo) */}
-        <div className="no-print">
-          <FollowupAlertsSection />
-        </div>
-
-        {/* Encuesta (forms.app) */}
-        <FormsAppEmbed />
       </main>
     </div>
   )

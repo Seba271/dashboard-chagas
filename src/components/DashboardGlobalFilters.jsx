@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import {
+  ESTADO_OPTIONS,
+  GENERO_OPTIONS,
+  AGE_GROUP_OPTIONS
+} from '@/lib/caseEnums'
 
 function IconFunnel({ className }) {
   return (
@@ -13,7 +18,6 @@ function IconFunnel({ className }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      {/* Embudo estilo línea (filtro) */}
       <path
         d="M22 3H2l8 9.32V20l4 2v-9.68L22 3z"
         stroke="currentColor"
@@ -44,20 +48,24 @@ function IconChevron({ open, className }) {
 }
 
 /**
- * Filtros globales en una sola línea; panel desplegable al pulsar el icono embudo.
+ * Filtros globales del modelo epidemiológico (sector, estado, año, género, edad).
  */
 export default function DashboardGlobalFilters({
   globalYear,
   onGlobalYearChange,
-  globalComuna,
-  onGlobalComunaChange,
-  comunaOptions = [],
-  caseTypeFilter,
-  onCaseTypeChange,
-  sexFilter,
-  onSexChange,
+  sectorId,
+  onSectorChange,
+  sectorOptions = [],
+  estadoFilter,
+  onEstadoChange,
+  generoFilter,
+  onGeneroChange,
   ageGroupFilter,
   onAgeGroupChange,
+  ocupacionFilter = 'all',
+  onOcupacionChange,
+  ocupacionOptions = [],
+  ocupacionLoading = false,
   onResetFilters
 }) {
   const [open, setOpen] = useState(false)
@@ -65,12 +73,13 @@ export default function DashboardGlobalFilters({
   const activeCount = useMemo(() => {
     let n = 0
     if (globalYear !== 'all') n++
-    if (globalComuna) n++
-    if (caseTypeFilter !== 'all') n++
-    if (sexFilter !== 'all') n++
+    if (sectorId && sectorId !== 'all') n++
+    if (estadoFilter !== 'all') n++
+    if (generoFilter !== 'all') n++
     if (ageGroupFilter !== 'all') n++
+    if (ocupacionFilter && ocupacionFilter !== 'all') n++
     return n
-  }, [globalYear, globalComuna, caseTypeFilter, sexFilter, ageGroupFilter])
+  }, [globalYear, sectorId, estadoFilter, generoFilter, ageGroupFilter, ocupacionFilter])
 
   const yearChoices = () => {
     const y = new Date().getFullYear()
@@ -113,9 +122,9 @@ export default function DashboardGlobalFilters({
                 i
               </button>
               <span id="filters-scope-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                Año, tipo, sexo y edad aplican al mapa, al ranking, al total de casos, a las proporciones de cobertura y
-                a las tarjetas de programa y vigilancia. La comuna también recorta esos totales. El gráfico temporal usa
-                año calendario o el rango de fechas según el año del panel.
+                Año, sector, estado, género y edad recortan todas las tarjetas, gráficos y mapa del
+                panel. El total de casos siempre corresponde al modelo epidemiológico anónimo (no
+                hay datos clínicos ni de identificación).
               </span>
             </span>
           </div>
@@ -160,7 +169,6 @@ export default function DashboardGlobalFilters({
                 className="dashboardFilterSelectCompact dashboardFilterSelectYear"
                 value={globalYear}
                 onChange={(e) => onGlobalYearChange(e.target.value)}
-                title="Con año distinto de «Todos», el gráfico temporal usa 1 ene – fin de ese año"
               >
                 {yearChoices().map((o) => (
                   <option key={o.value} value={o.value}>
@@ -173,19 +181,20 @@ export default function DashboardGlobalFilters({
             <span className="dashboardFiltersSep" aria-hidden />
 
             <div className="dashboardFilterChip">
-              <label htmlFor="dash-filter-comuna" className="dashboardFilterInlineLabel">
-                Comuna
+              <label htmlFor="dash-filter-sector" className="dashboardFilterInlineLabel">
+                Sector
               </label>
               <select
-                id="dash-filter-comuna"
+                id="dash-filter-sector"
                 className="dashboardFilterSelectCompact"
-                value={globalComuna}
-                onChange={(e) => onGlobalComunaChange(e.target.value)}
+                value={sectorId}
+                onChange={(e) => onSectorChange(e.target.value)}
               >
-                <option value="">Todas</option>
-                {comunaOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                <option value="all">Todos</option>
+                {sectorOptions.map((s) => (
+                  <option key={s.id_sector} value={String(s.id_sector)}>
+                    {s.nombre_sector}
+                    {s.comuna ? ` — ${s.comuna}` : ''}
                   </option>
                 ))}
               </select>
@@ -194,37 +203,42 @@ export default function DashboardGlobalFilters({
             <span className="dashboardFiltersSep" aria-hidden />
 
             <div className="dashboardFilterChip">
-              <label htmlFor="dash-filter-case" className="dashboardFilterInlineLabel">
-                Tipo
+              <label htmlFor="dash-filter-estado" className="dashboardFilterInlineLabel">
+                Estado
               </label>
               <select
-                id="dash-filter-case"
+                id="dash-filter-estado"
                 className="dashboardFilterSelectCompact"
-                value={caseTypeFilter}
-                onChange={(e) => onCaseTypeChange(e.target.value)}
+                value={estadoFilter}
+                onChange={(e) => onEstadoChange(e.target.value)}
               >
                 <option value="all">Todos</option>
-                <option value="agudo">Agudos</option>
-                <option value="bajo_control">Bajo control</option>
-                <option value="gestante">Gestantes</option>
+                {ESTADO_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <span className="dashboardFiltersSep" aria-hidden />
 
             <div className="dashboardFilterChip">
-              <label htmlFor="dash-filter-sex" className="dashboardFilterInlineLabel">
-                Sexo
+              <label htmlFor="dash-filter-genero" className="dashboardFilterInlineLabel">
+                Género
               </label>
               <select
-                id="dash-filter-sex"
+                id="dash-filter-genero"
                 className="dashboardFilterSelectCompact"
-                value={sexFilter}
-                onChange={(e) => onSexChange(e.target.value)}
+                value={generoFilter}
+                onChange={(e) => onGeneroChange(e.target.value)}
               >
                 <option value="all">Todos</option>
-                <option value="F">Femenino</option>
-                <option value="M">Masculino</option>
+                {GENERO_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -240,12 +254,33 @@ export default function DashboardGlobalFilters({
                 value={ageGroupFilter}
                 onChange={(e) => onAgeGroupChange(e.target.value)}
               >
-                <option value="all">Todos</option>
-                <option value="0_14">0-14</option>
-                <option value="15_29">15-29</option>
-                <option value="30_44">30-44</option>
-                <option value="45_59">45-59</option>
-                <option value="60_plus">60+</option>
+                {AGE_GROUP_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <span className="dashboardFiltersSep" aria-hidden />
+
+            <div className="dashboardFilterChip">
+              <label htmlFor="dash-filter-ocupacion" className="dashboardFilterInlineLabel">
+                Ocupación
+              </label>
+              <select
+                id="dash-filter-ocupacion"
+                className="dashboardFilterSelectCompact"
+                value={ocupacionFilter}
+                onChange={(e) => onOcupacionChange?.(e.target.value)}
+                disabled={ocupacionLoading || ocupacionOptions.length === 0}
+              >
+                <option value="all">Todas</option>
+                {ocupacionOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -257,7 +292,6 @@ export default function DashboardGlobalFilters({
                   onClick={() => onResetFilters()}
                   disabled={activeCount === 0}
                   aria-label="Restablecer todos los filtros a valores por defecto"
-                  title="Quita año, comuna y perfil del caso (vuelve a «Todos»)"
                 >
                   Restablecer
                 </button>

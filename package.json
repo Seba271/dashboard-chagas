@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
+    "@turf/turf": "^7.3.5",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
     "leaflet": "^1.9.4",
