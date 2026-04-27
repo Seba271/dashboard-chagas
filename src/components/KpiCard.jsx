@@ -5,6 +5,8 @@
  * Tarjeta de KPI con estilo claro y profesional (acento teal/color).
  */
 
+import Skeleton from './Skeleton'
+
 export default function KpiCard({ 
   title, 
   value, 
@@ -23,8 +25,8 @@ export default function KpiCard({
     <div
       style={{
         background: '#ffffff',
-        borderRadius: '0.75rem',
-        padding: '1.25rem',
+        borderRadius: '0.65rem',
+        padding: '0.9rem 1rem',
         border: '1px solid #e2e8f0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         transition: 'box-shadow 0.2s, transform 0.2s',
@@ -42,12 +44,12 @@ export default function KpiCard({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '0.75rem',
-        marginBottom: '0.75rem'
+        gap: '0.5rem',
+        marginBottom: '0.5rem'
       }}>
-        <span style={{ fontSize: '1.25rem' }}>{icon}</span>
+        <span style={{ fontSize: '1.05rem' }}>{icon}</span>
         <h3 style={{
-          fontSize: '0.8125rem',
+          fontSize: '0.75rem',
           fontWeight: '500',
           color: '#64748b',
           margin: 0,
@@ -58,20 +60,21 @@ export default function KpiCard({
         </h3>
       </div>
       <div style={{
-        fontSize: '1.75rem',
+        fontSize: '1.45rem',
         fontWeight: '700',
         color: '#1e293b',
         lineHeight: '1.2',
-        letterSpacing: '-0.02em'
+        letterSpacing: '-0.02em',
+        minHeight: '1.8rem'
       }}>
         {loading ? (
-          <span style={{ color: '#94a3b8', fontWeight: '500' }}>Cargando...</span>
+          <Skeleton block height="1.45rem" width="65%" />
         ) : (
           formatValue(value)
         )}
       </div>
       <div style={{
-        marginTop: '1rem',
+        marginTop: '0.7rem',
         height: '3px',
         background: `linear-gradient(90deg, ${color}, ${color}99)`,
         borderRadius: '2px',
@@ -79,7 +82,7 @@ export default function KpiCard({
       }} />
       {subtitle && (
         <p style={{
-          marginTop: '0.65rem',
+          marginTop: '0.5rem',
           fontSize: '0.6875rem',
           color: '#64748b',
           lineHeight: 1.35,

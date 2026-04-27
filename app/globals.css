@@ -620,13 +620,13 @@ a {
    Dashboard: filtros globales
    ============================================================================ */
 .dashboard-shell {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
 .dashboardPageRoot {
   min-height: 100vh;
-  padding: 1.5rem 1rem;
+  padding: 1rem 1rem;
   background: var(--dashboard-bg);
   color: var(--dashboard-text);
 }
@@ -692,7 +692,7 @@ a {
 .dashboardMain {
   display: flex;
   flex-direction: column;
-  gap: 2.25rem;
+  gap: 1.5rem;
 }
 
 .dashboardSection {
@@ -760,7 +760,7 @@ a {
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 0;
-  padding: 1.25rem 1.5rem;
+  padding: 0.85rem 1.25rem;
   background: var(--dashboard-card);
   border-radius: 0.75rem;
   border: 1px solid var(--dashboard-card-border);
@@ -768,9 +768,9 @@ a {
 }
 
 .dashboardPageHeaderTitles h1 {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 0.15rem 0;
   color: var(--dashboard-text);
   letter-spacing: -0.02em;
 }
@@ -811,20 +811,20 @@ a {
 }
 
 .dashboardSectionTitle {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--dashboard-text);
   letter-spacing: -0.02em;
-  margin: 0 0 0.35rem 0;
+  margin: 0 0 0.25rem 0;
   line-height: 1.3;
 }
 
 .dashboardSectionLead {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: #475569;
   margin: 0;
   max-width: 42rem;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .dashboardSectionLeadTight {
@@ -967,7 +967,7 @@ a {
 }
 
 .dashboardKpiGroup {
-  margin-bottom: 1.35rem;
+  margin-bottom: 0.85rem;
 }
 
 .dashboardKpiGroup:last-child {
@@ -977,7 +977,7 @@ a {
 .dashboardChartsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5rem;
+  gap: 1rem;
   align-items: start;
 }
 
@@ -985,6 +985,32 @@ a {
 .dashboardChartColumn--full {
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+/* Fila combinada: bar chart ancho a la izquierda, ranking compacto a la derecha. */
+.dashboardChartColumn--barWide {
+  grid-column: span 1;
+  min-width: 0;
+}
+
+.dashboardChartColumn--rankNarrow {
+  grid-column: span 1;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .dashboardChartsGrid {
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  }
+  .dashboardChartColumn--barWide {
+    grid-column: 1 / 2;
+  }
+  .dashboardChartColumn--rankNarrow {
+    grid-column: 2 / 3;
+  }
+  .dashboardChartColumn--full {
+    grid-column: 1 / -1;
+  }
 }
 
 .dashboardChartColumn--full .comunaRankTableWrap {
@@ -1193,13 +1219,18 @@ a {
 
 .dashboardFiltersOneLine {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.35rem;
-  overflow-x: auto;
-  padding-bottom: 0.2rem;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
+  gap: 0.45rem 0.5rem;
+  padding-bottom: 0;
+}
+
+/* En pantallas chicas, los separadores verticales se vuelven ruido cuando los
+   chips wrappean a varias filas. Los ocultamos para que la grilla respire. */
+@media (max-width: 1100px) {
+  .dashboardFiltersOneLine .dashboardFiltersSep {
+    display: none;
+  }
 }
 
 .dashboardFilterChip {
@@ -1219,19 +1250,19 @@ a {
 }
 
 .dashboardFilterSelectCompact {
-  padding: 0.4rem 0.55rem;
+  padding: 0.35rem 0.5rem;
   background: #fff;
   color: var(--dashboard-text);
   border: 1px solid var(--dashboard-input-border);
   border-radius: 0.5rem;
   font-size: 0.8125rem;
-  min-width: 5.25rem;
-  max-width: 11rem;
+  min-width: 4.75rem;
+  max-width: 10rem;
   cursor: pointer;
 }
 
 .dashboardFilterSelectYear {
-  min-width: 6.75rem;
+  min-width: 5.5rem;
 }
 
 .dashboardFiltersSep {
@@ -1283,6 +1314,25 @@ a {
   background: #ffffff;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+}
+
+/* Variante compacta (3 columnas: # · Sector · %), pensada para ir al lado
+   del SectorBarChart en columna estrecha. */
+.comunaRankTableWrap--compact {
+  margin-top: 0;
+}
+
+.comunaRankTableWrap--compact .comunaRankTable {
+  min-width: 0;
+}
+
+.comunaRankTableWrap--compact .comunaRankTh,
+.comunaRankTableWrap--compact .comunaRankTd {
+  padding: 0.5rem 0.6rem;
+}
+
+.comunaRankTableWrap--compact .comunaRankThRank {
+  width: 2.5rem;
 }
 
 .comunaRankTableToolbar {
@@ -1488,6 +1538,50 @@ a {
   font-size: 0.875rem;
 }
 
+.comunaRankExpandBar {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0.75rem 0.25rem;
+  border-top: 1px dashed #e2e8f0;
+  background: linear-gradient(to bottom, rgba(248, 250, 252, 0), rgba(248, 250, 252, 0.6));
+}
+
+.comunaRankExpandBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #fff;
+  color: var(--dashboard-text-strong, #0f172a);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.comunaRankExpandBtn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.comunaRankExpandBtn:active {
+  transform: translateY(1px);
+}
+
+.comunaRankExpandBtn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.comunaRankExpandIcon {
+  font-size: 0.7rem;
+  color: #64748b;
+  line-height: 1;
+}
+
 .chartFilterNote {
   font-size: 0.75rem;
   color: var(--dashboard-text-muted);
@@ -1565,7 +1659,7 @@ a {
 }
 
 /* ============================================================================
-   Impresión: resumen (oculta controles, mapa interactivo, seguimiento)
+   Impresión: resumen (oculta controles y mapa interactivo)
    ============================================================================ */
 @media print {
   @page {
@@ -1711,9 +1805,293 @@ a {
   }
 
   .leaflet-container,
-  .followupSection {
+  .followupSection,
+  .caseRegSection {
     break-inside: avoid;
   }
 }
 
+/* ============================================================================
+   Formulario de registro de caso (modelo epidemiológico)
+   ============================================================================ */
+.caseRegSection {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  border: 1px solid var(--dashboard-card-border, #e2e8f0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 1rem 1.25rem;
+}
 
+.caseRegHead {
+  display: flex;
+  align-items: center;
+}
+
+.caseRegToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.caseRegToggleIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--dashboard-card-border, #e2e8f0);
+  color: var(--dashboard-accent, #0d9488);
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: #f8fafc;
+}
+
+.caseRegTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dashboard-text, #1e293b);
+}
+
+.caseRegHint {
+  margin-left: auto;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.caseRegForm {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.caseRegGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem 1rem;
+}
+
+.caseRegField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.caseRegField--wide {
+  grid-column: span 2;
+}
+
+.caseRegField--full {
+  grid-column: 1 / -1;
+}
+
+.caseRegField--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 1.25rem;
+}
+
+.caseRegLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.caseRegCheckLabel {
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.caseRegInput,
+.caseRegTextarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--dashboard-input-border, #cbd5e1);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--dashboard-text, #1e293b);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.caseRegInput:focus,
+.caseRegTextarea:focus {
+  border-color: var(--dashboard-accent, #0d9488);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+.caseRegTextarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.caseRegError {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.caseRegSuccess {
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.caseRegActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.caseRegBtnPrimary {
+  padding: 0.55rem 1rem;
+  background: var(--dashboard-accent, #0d9488);
+  color: #ffffff;
+  border: 1px solid var(--dashboard-accent, #0d9488);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.caseRegBtnPrimary:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.caseRegBtnPrimary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.caseRegBtnSecondary {
+  padding: 0.55rem 0.9rem;
+  background: #ffffff;
+  color: var(--dashboard-text, #1e293b);
+  border: 1px solid var(--dashboard-input-border, #cbd5e1);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.caseRegBtnSecondary:hover:not(:disabled) {
+  border-color: var(--dashboard-accent, #0d9488);
+  color: var(--dashboard-accent, #0d9488);
+}
+
+.caseRegLegal {
+  font-size: 0.7rem;
+  color: var(--dashboard-text-muted, #64748b);
+  margin: 0;
+}
+
+/* ============================================================================
+   SKELETON SHIMMER — feedback visual mientras se cargan datos
+   ============================================================================ */
+
+.skeletonShimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.55) 0%,
+    rgba(203, 213, 225, 0.95) 50%,
+    rgba(226, 232, 240, 0.55) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+@keyframes skeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonShimmer {
+    animation: none;
+    background: rgba(203, 213, 225, 0.65);
+  }
+}
+
+/* ============================================================================
+   ÚLTIMA ACTUALIZACIÓN DEL DATASET (header del dashboard)
+   ============================================================================ */
+
+.dashboardLastUpdated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  padding: 0.18rem 0.55rem 0.18rem 0.4rem;
+  border-radius: 999px;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  font-size: 0.7rem;
+  color: #0f766e;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  width: fit-content;
+}
+
+.dashboardLastUpdatedDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #14b8a6;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+.dashboardLastUpdated--stale {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.dashboardLastUpdated--stale .dashboardLastUpdatedDot {
+  background: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboardLastUpdatedDot {
+    animation: none;
+  }
+}
