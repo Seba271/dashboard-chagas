@@ -10,8 +10,8 @@ import { sectorOptionLabel } from '@/lib/sectorDisplay'
  *  Capa 1 — Polígonos por sector
  *    Voronoi sobre los centroides de los sectores, recortado a un convex-hull
  *    suavizado (área "real" de cobertura territorial). Coloreado en degradé
- *    monocromático slate (claro → oscuro) según número de casos del sector;
- *    así no compite con los colores semáforo de los puntos.
+ *    secuencial azul epidemiológico (claro → índigo) según número de casos;
+ *    estándar en mapas de carga sin semántica de riesgo y complementa el semáforo.
  *
  *  Capa 2 — Puntos individuales por caso
  *    Un círculo por cada caso. Posición aleatoria dentro del polígono del sector
@@ -668,19 +668,18 @@ function latLngOnSectorCentroid(sector, idCaso) {
 }
 
 /**
- * Escala monocromática slate (gris-azulado). Va desde claro (0 casos) hasta
- * oscuro saturado (max). NO usa rojo/amarillo/verde, así no compite con los
- * puntos del semáforo.
+ * Escala secuencial azul (tipo mapas epidemiológicos / coropléticos): de azul
+ * muy claro (0 casos) a índigo profundo (máximo). Separada del semáforo R/A/V.
  */
 function getChoroplethColor(count, maxCount) {
-  if (count === 0) return '#f1f5f9'
+  if (count === 0) return '#eff6ff'
   const ratio = count / Math.max(1, maxCount)
-  if (ratio >= 0.85) return '#0f172a'
-  if (ratio >= 0.65) return '#1e293b'
-  if (ratio >= 0.45) return '#334155'
-  if (ratio >= 0.25) return '#475569'
-  if (ratio >= 0.1) return '#64748b'
-  return '#94a3b8'
+  if (ratio >= 0.85) return '#172554'
+  if (ratio >= 0.65) return '#1e40af'
+  if (ratio >= 0.45) return '#2563eb'
+  if (ratio >= 0.25) return '#3b82f6'
+  if (ratio >= 0.1) return '#60a5fa'
+  return '#93c5fd'
 }
 
 /* PRNG determinista (mulberry32). Misma semilla → misma salida. */
@@ -754,7 +753,7 @@ const gradientBar = {
   width: '100%',
   height: 8,
   borderRadius: 4,
-  background: 'linear-gradient(90deg, #f1f5f9 0%, #94a3b8 25%, #64748b 50%, #334155 75%, #0f172a 100%)',
+  background: 'linear-gradient(90deg, #eff6ff 0%, #93c5fd 22%, #3b82f6 48%, #2563eb 72%, #172554 100%)',
   border: '1px solid #cbd5e1'
 }
 

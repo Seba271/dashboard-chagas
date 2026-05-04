@@ -14,7 +14,8 @@
  *   loading: boolean
  */
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import ReactECharts from 'echarts-for-react'
 import { SkeletonChart } from '@/src/components/Skeleton'
 
@@ -52,6 +53,19 @@ function emptyBuckets() {
 }
 
 export default function AgeGenderPyramid({ cases = [], loading = false }) {
+  const [forPrint, setForPrint] = useState(false)
+
+  useEffect(() => {
+    const on = () => flushSync(() => setForPrint(true))
+    const off = () => flushSync(() => setForPrint(false))
+    window.addEventListener('beforeprint', on, true)
+    window.addEventListener('afterprint', off)
+    return () => {
+      window.removeEventListener('beforeprint', on, true)
+      window.removeEventListener('afterprint', off)
+    }
+  }, [])
+
   const {
     masculinoData,
     femeninoData,
@@ -103,12 +117,47 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
     const labels = AGE_BUCKETS.map((b) => b.label)
     const totalSafe = Math.max(1, total)
 
+    const titleBlock = forPrint
+      ? {
+          text: 'Pirámide poblacional',
+          left: 'center',
+          top: 6,
+          textStyle: { color: '#1e293b', fontSize: 13, fontWeight: '600' }
+        }
+      : {
+          text: 'Pirámide poblacional',
+          left: 'center',
+          textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
+        }
+
+    const legendBlock = forPrint
+      ? {
+          data: ['Masculino', 'Otro', 'Femenino', 'No informa'],
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 4,
+          top: 'auto',
+          itemWidth: 12,
+          itemHeight: 8,
+          itemGap: 10,
+          textStyle: { color: '#475569', fontSize: 10 }
+        }
+      : {
+          data: ['Masculino', 'Otro', 'Femenino', 'No informa'],
+          top: 30,
+          textStyle: { color: '#475569', fontSize: 12 },
+          itemWidth: 14,
+          itemHeight: 10,
+          itemGap: 14
+        }
+
+    /* Impresión: márgenes simétricos en px para que el eje 0 quede centrado (evita “todo a la derecha”) */
+    const gridBlock = forPrint
+      ? { left: 56, right: 56, bottom: 72, top: 42, containLabel: true }
+      : { left: '6%', right: '6%', bottom: '4%', top: '22%', containLabel: true }
+
     return {
-      title: {
-        text: 'Pirámide poblacional',
-        left: 'center',
-        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
-      },
+      title: titleBlock,
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -131,15 +180,8 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
           return `<div style="font-weight:600;margin-bottom:4px">${ageLabel} años</div>${lines}`
         }
       },
-      legend: {
-        data: ['Masculino', 'Otro', 'Femenino', 'No informa'],
-        top: 30,
-        textStyle: { color: '#475569', fontSize: 12 },
-        itemWidth: 14,
-        itemHeight: 10,
-        itemGap: 14
-      },
-      grid: { left: '6%', right: '6%', bottom: '4%', top: '22%', containLabel: true },
+      legend: legendBlock,
+      grid: gridBlock,
       xAxis: {
         type: 'value',
         min: -maxAbs,
@@ -248,7 +290,7 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
         }
       ]
     }
-  }, [masculinoData, femeninoData, otroData, noInformaData, maxAbs, total])
+  }, [masculinoData, femeninoData, otroData, noInformaData, maxAbs, total, forPrint])
 
   const cardStyle = {
     background: '#ffffff',

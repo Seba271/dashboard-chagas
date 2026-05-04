@@ -18,7 +18,8 @@
  *   initialVisible:  filas mostradas antes de expandir (default 5)
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { ESTADO_COLOR, ESTADO_LABEL } from '@/lib/caseEnums'
 import Skeleton, { SkeletonTableRow } from '@/src/components/Skeleton'
 
@@ -27,6 +28,14 @@ const COLOR_PENDIENTE = '#dc2626'
 export default function SectorEstadoMatrix({ cases = [], loading = false, initialVisible = 5 }) {
   const [orderBy, setOrderBy] = useState('pendientes')
   const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    const showAllForPrint = () => {
+      flushSync(() => setExpanded(true))
+    }
+    window.addEventListener('beforeprint', showAllForPrint, true)
+    return () => window.removeEventListener('beforeprint', showAllForPrint, true)
+  }, [])
 
   const rows = useMemo(() => {
     const m = new Map()
@@ -123,7 +132,7 @@ export default function SectorEstadoMatrix({ cases = [], loading = false, initia
   }
 
   return (
-    <div style={cardStyle} className="dashboardChartCard">
+    <div style={cardStyle} className="dashboardChartCard sectorEstadoMatrixWrap">
       <div style={toolbarStyle}>
         <span style={titleStyle}>Sectores × estado</span>
         <span style={metaStyle}>
@@ -134,7 +143,7 @@ export default function SectorEstadoMatrix({ cases = [], loading = false, initia
         </span>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="sectorEstadoMatrixScroll" style={{ overflowX: 'auto' }}>
         <table style={tableStyle}>
           <thead>
             <tr>
@@ -148,9 +157,18 @@ export default function SectorEstadoMatrix({ cases = [], loading = false, initia
                 { key: 'total', label: 'Total', color: '#475569' }
               ].map((col) => (
                 <th key={col.key} style={thNumStyle}>
-                  <button
-                    type="button"
+                  {/* div en lugar de <button>: Chrome perdía el texto del thead repetido en hojas siguientes */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="sectorEstadoMatrixSortBtn"
                     onClick={() => setOrderBy(col.key)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setOrderBy(col.key)
+                      }
+                    }}
                     style={{
                       ...thBtnStyle,
                       color: orderBy === col.key ? col.color : '#475569',
@@ -171,11 +189,15 @@ export default function SectorEstadoMatrix({ cases = [], loading = false, initia
                         }}
                       />
                       {col.label}
-                      <span style={{ fontSize: '0.75rem', opacity: orderBy === col.key ? 1 : 0.35 }}>
+                      <span
+                        className="sectorEstadoMatrixSortGlyph"
+                        style={{ fontSize: '0.75rem', opacity: orderBy === col.key ? 1 : 0.35 }}
+                        aria-hidden
+                      >
                         {orderBy === col.key ? '↓' : '↕'}
                       </span>
                     </span>
-                  </button>
+                  </div>
                 </th>
               ))}
             </tr>
@@ -316,9 +338,7 @@ const thBaseStyle = {
   fontSize: '0.75rem',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
-  background: '#f8fafc',
-  position: 'sticky',
-  top: 0
+  background: '#f8fafc'
 }
 
 const thNameStyle = {
@@ -340,7 +360,10 @@ const thBtnStyle = {
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
   textAlign: 'right',
-  width: '100%'
+  width: '100%',
+  font: 'inherit',
+  fontWeight: 'inherit',
+  boxSizing: 'border-box' /* mismo box que <button> para impresión */
 }
 
 const tdBaseStyle = {

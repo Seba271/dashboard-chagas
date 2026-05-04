@@ -451,18 +451,30 @@ export default function DashboardPage() {
           {isAdmin && (
             <Link
               href="/dashboard/admin"
-              className="dashboardPrintBtn"
+              className="dashboardHeaderBtn dashboardHeaderBtn--admin"
               title="Gestionar usuarios con acceso al panel epidemiológico"
             >
+              <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0h-.29c-.45 1.43-1.74 2.63-3.71 2.91V19h8v-2.5c0-1.52-2.33-2.7-4-3.16z"
+                  fill="currentColor"
+                />
+              </svg>
               Usuarios y permisos
             </Link>
           )}
           <button
             type="button"
-            className="dashboardPrintBtn"
+            className="dashboardHeaderBtn dashboardHeaderBtn--secondary"
             onClick={() => window.print()}
             aria-label="Imprimir resumen del dashboard"
           >
+            <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"
+                fill="currentColor"
+              />
+            </svg>
             Imprimir resumen
           </button>
           <div className="dashboardUserBlock">
@@ -472,7 +484,18 @@ export default function DashboardPage() {
               <span className="dashboardUserRole">{isAdmin ? 'Administrador' : 'Solo lectura'}</span>
             )}
           </div>
-          <button type="button" className="dashboardLogoutBtn" onClick={handleLogout} aria-label="Cerrar sesión">
+          <button
+            type="button"
+            className="dashboardHeaderBtn dashboardHeaderBtn--logout"
+            onClick={handleLogout}
+            aria-label="Cerrar sesión"
+          >
+            <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
+                fill="currentColor"
+              />
+            </svg>
             Cerrar sesión
           </button>
         </div>
@@ -626,7 +649,7 @@ export default function DashboardPage() {
         </section>
 
         {/* 3. Demografía: pirámide poblacional */}
-        <section className="dashboardSection" aria-labelledby="demo-heading">
+        <section className="dashboardSection dashboardDemographicsSection" aria-labelledby="demo-heading">
           <div className="dashboardSectionHead">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <h2 id="demo-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>
@@ -776,8 +799,8 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* 5. Sectores con casos pendientes */}
-        <section className="dashboardSection" aria-labelledby="matrix-heading">
+        {/* 5. Sectores con casos pendientes — nueva hoja al imprimir */}
+        <section className="dashboardSection dashboardSectorsMatrixSection" aria-labelledby="matrix-heading">
           <div className="dashboardSectionHead">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <h2 id="matrix-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>

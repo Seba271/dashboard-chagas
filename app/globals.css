@@ -1678,38 +1678,99 @@ a {
   cursor: not-allowed;
 }
 
-.dashboardPrintBtn {
-  padding: 0.45rem 0.9rem;
+/* Botones del header del dashboard (Next Link + button) */
+.dashboardHeaderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  border-radius: 0.5rem;
-  border: 1px solid var(--dashboard-card-border);
-  background: #fff;
-  color: var(--dashboard-text);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  border-radius: 0.625rem;
+  border: 1px solid transparent;
   cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
-.dashboardPrintBtn:hover {
-  background: #f8fafc;
+.dashboardHeaderBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.dashboardHeaderBtn:focus-visible {
+  outline: 2px solid var(--dashboard-accent);
+  outline-offset: 2px;
+}
+
+.dashboardHeaderBtnIcon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+/* Secundario: imprimir, volver al panel */
+.dashboardHeaderBtn--secondary {
+  background: #ffffff;
+  border-color: var(--dashboard-card-border);
+  color: var(--dashboard-text);
+}
+
+.dashboardHeaderBtn--secondary:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-color: var(--dashboard-accent);
+  color: var(--dashboard-accent);
+  box-shadow: 0 2px 10px rgba(13, 148, 136, 0.12);
+}
+
+/* Administración: acento teal suave, coherente con el tema */
+.dashboardHeaderBtn--admin {
+  background: linear-gradient(180deg, #f0fdfa 0%, #ecfdf5 100%);
+  border-color: #5eead4;
+  color: #0f766e;
+}
+
+.dashboardHeaderBtn--admin:hover {
+  background: linear-gradient(180deg, #ccfbf1 0%, #99f6e4 100%);
+  border-color: #2dd4bf;
+  color: #134e4a;
+  box-shadow: 0 3px 14px rgba(13, 148, 136, 0.18);
+}
+
+/* Cerrar sesión */
+.dashboardHeaderBtn--logout {
+  background: #ffffff;
   border-color: var(--dashboard-accent);
   color: var(--dashboard-accent);
 }
 
-.dashboardLogoutBtn {
-  padding: 0.5rem 1rem;
-  background: #ffffff;
-  color: var(--dashboard-accent);
-  border: 1px solid var(--dashboard-accent);
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: background 0.15s ease, color 0.15s ease;
+.dashboardHeaderBtn--logout:hover {
+  background: var(--dashboard-accent);
+  border-color: var(--dashboard-accent);
+  color: #ffffff;
+  box-shadow: 0 3px 14px rgba(13, 148, 136, 0.28);
 }
 
-.dashboardLogoutBtn:hover {
-  background: var(--dashboard-accent);
-  color: #ffffff;
+@media (prefers-reduced-motion: reduce) {
+  .dashboardHeaderBtn {
+    transition-duration: 0.01ms;
+  }
+
+  .dashboardHeaderBtn:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .print-only {
@@ -1729,6 +1790,8 @@ a {
   body {
     height: auto !important;
     min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .no-print {
@@ -1745,9 +1808,21 @@ a {
     print-color-adjust: exact;
   }
 
+  /* Cadena completa a ancho útil de la hoja y centrada (evita bloque corrido a la derecha) */
+  .dashboard-shell.dashboardPageRoot {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
   .dashboard-shell {
     max-width: 100% !important;
     padding: 0 !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    box-sizing: border-box !important;
   }
 
   .dashboardPageRoot {
@@ -1755,14 +1830,72 @@ a {
     height: auto !important;
     padding: 0 !important;
     background: #fff !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .dashboardMain {
-    gap: 1rem !important;
+    gap: 1.65rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    align-items: stretch !important;
   }
 
   .dashboardSection {
     break-inside: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box !important;
+    align-self: stretch !important;
+  }
+
+  /* Matriz sector × estado: siempre empieza en una hoja nueva */
+  .dashboardSectorsMatrixSection {
+    break-before: page;
+    page-break-before: always;
+    padding-top: 0.35rem;
+  }
+
+  .printHeader {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .dashboardDemographicsSection {
+    margin-bottom: 0.35rem;
+    padding-top: 0.35rem;
+  }
+
+  .dashboardAnalysisSection {
+    padding-top: 0.45rem;
+    margin-top: 0.15rem;
+  }
+
+  /* Títulos de sección pegados al contenido que sigue */
+  .dashboardSectionHead {
+    page-break-after: avoid;
+    break-after: avoid-page;
+  }
+
+  /* Pirámide y tarjetas de gráfico fuera del grid de análisis */
+  .dashboardDemographicsSection .dashboardChartCard {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 0.35rem;
+  }
+
+  /* Tooltips “i” del panel: solo pantalla */
+  .dashboardInfoTooltip {
+    display: none !important;
   }
 
   /* Evita “página vacía”: el KPI grid puede partirse entre hojas */
@@ -1778,7 +1911,8 @@ a {
   }
 
   .printPeriodLine {
-    margin: 0.4rem 0 0 0;
+    margin: 0.85rem 0 0 0;
+    padding-bottom: 0.15rem;
     font-size: 0.8rem;
     color: #334155;
   }
@@ -1809,24 +1943,105 @@ a {
     position: relative !important;
     width: 100% !important;
     max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
     overflow: visible !important;
     box-sizing: border-box !important;
-    padding: 0.75rem !important;
+    padding: 0.85rem 0.85rem 1rem !important;
     box-shadow: none !important;
     border: 1px solid #e2e8f0 !important;
   }
 
-  /* No forzar altura: respeta el alto inline del componente (≈400px) para no “achicar” el plot */
+  /* Alturas más bajas para que quepan en una hoja y ECharts recalcule con resize */
   .dashboardEchartHost {
     max-width: 100% !important;
     width: 100% !important;
     position: relative !important;
-    min-height: 320px;
+    min-height: 0 !important;
+  }
+
+  .dashboardDemographicsSection .dashboardEchartHost {
+    height: 340px !important;
+    min-height: 300px !important;
+  }
+
+  .dashboardEchartHost--tendency {
+    height: 400px !important;
+    min-height: 340px !important;
+  }
+
+  .dashboardEchartHostBar {
+    height: 260px !important;
+    min-height: 220px !important;
   }
 
   .dashboardEchartHost svg {
     max-width: 100% !important;
     display: block !important;
+  }
+
+  /* Ranking / matriz: sin botón expandir; cabeceras repetidas en cada hoja */
+  .comunaRankExpandBar {
+    display: none !important;
+  }
+
+  .comunaRankTableScroll,
+  .sectorEstadoMatrixScroll {
+    overflow: visible !important;
+    max-width: 100% !important;
+  }
+
+  /* Sticky thead rompe la repetición de cabeceras al imprimir */
+  .comunaRankTable thead {
+    display: table-header-group !important;
+    position: static !important;
+  }
+
+  .comunaRankTable thead th {
+    position: static !important;
+  }
+
+  .comunaRankSortBtn,
+  .sectorEstadoMatrixSortBtn {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    cursor: default !important;
+    pointer-events: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .comunaRankSortIcon,
+  .sectorEstadoMatrixSortGlyph {
+    display: none !important;
+  }
+
+  .comunaRankTable thead,
+  .sectorEstadoMatrixWrap table thead {
+    display: table-header-group !important;
+  }
+
+  /* Filas pueden partirse; la cabecera se repite en cada hoja */
+  .comunaRankTable tr,
+  .sectorEstadoMatrixWrap table tr {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .sectorEstadoMatrixWrap {
+    break-inside: auto;
+    page-break-inside: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .sectorEstadoMatrixWrap table {
+    width: 100% !important;
   }
 
   /* Controles ocultos en impresión (clase no-print en componente) */
@@ -1846,16 +2061,18 @@ a {
     min-height: 46px !important;
   }
 
-  /* Tabla ranking */
+  /* Tabla ranking (visible para repetir thead entre páginas) */
   .comunaRankTableWrap {
     break-inside: auto;
-    overflow: hidden !important;
+    overflow: visible !important;
     max-width: 100% !important;
     box-shadow: none !important;
   }
 
   .comunaRankTable {
     font-size: 0.7rem !important;
+    min-width: 0 !important;
+    width: 100% !important;
   }
 
   .comunaRankTableToolbar {
@@ -2173,10 +2390,6 @@ a {
 
 .adminPageHeader .dashboardPageHeaderTitles h1 {
   font-size: 1.35rem;
-}
-
-.adminBackLink {
-  font-weight: 500;
 }
 
 .adminStateScreen {

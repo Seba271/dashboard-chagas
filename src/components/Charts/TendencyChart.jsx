@@ -16,7 +16,8 @@
 
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import ReactECharts from 'echarts-for-react'
 import { SkeletonChart } from '@/src/components/Skeleton'
 
@@ -113,6 +114,9 @@ function bucketsWithCases(seriesMaps) {
 }
 
 const CASOS_LEYENDA_ANO_ACTUAL = 'Casos (año actual)'
+const CASOS_LEYENDA_ANO_ANTERIOR = 'Casos (año anterior)'
+const CASOS_LEYENDA_PRINT_ACTUAL = 'Año actual'
+const CASOS_LEYENDA_PRINT_ANTERIOR = 'Año anterior'
 
 export default function TendencyChart({
   casesData = [],
@@ -124,6 +128,19 @@ export default function TendencyChart({
   loading = false,
   controls = null
 }) {
+  const [forPrint, setForPrint] = useState(false)
+
+  useEffect(() => {
+    const on = () => flushSync(() => setForPrint(true))
+    const off = () => flushSync(() => setForPrint(false))
+    window.addEventListener('beforeprint', on, true)
+    window.addEventListener('afterprint', off)
+    return () => {
+      window.removeEventListener('beforeprint', on, true)
+      window.removeEventListener('afterprint', off)
+    }
+  }, [])
+
   const chartData = useMemo(() => {
     const granularity = pickGranularity(rangeFrom, rangeTo)
     const fullBuckets = eachBucketInRange(rangeFrom, rangeTo, granularity)
@@ -186,12 +203,12 @@ export default function TendencyChart({
   }
 
   const option = useMemo(() => {
-    const legendItems = chartData.hasPrev
-      ? [CASOS_LEYENDA_ANO_ACTUAL, 'Casos (año anterior)']
-      : [CASOS_LEYENDA_ANO_ACTUAL]
+    const nameActual = forPrint ? CASOS_LEYENDA_PRINT_ACTUAL : CASOS_LEYENDA_ANO_ACTUAL
+    const nameAnterior = forPrint ? CASOS_LEYENDA_PRINT_ANTERIOR : CASOS_LEYENDA_ANO_ANTERIOR
+    const legendItems = chartData.hasPrev ? [nameActual, nameAnterior] : [nameActual]
     const series = [
       {
-        name: CASOS_LEYENDA_ANO_ACTUAL,
+        name: nameActual,
         type: type,
         data: chartData.cases,
         smooth: type === 'line',
@@ -213,7 +230,7 @@ export default function TendencyChart({
     ]
     if (chartData.hasPrev) {
       series.push({
-        name: 'Casos (año anterior)',
+        name: nameAnterior,
         type: type,
         data: chartData.casesPrev,
         smooth: type === 'line',
@@ -228,12 +245,14 @@ export default function TendencyChart({
     }
     const hasTitleText = Boolean(title && String(title).trim())
     let subtext = ''
-    if (chartData.granularity === 'month') {
-      subtext = 'Casos agrupados por mes (rango amplio).'
-    } else if (chartData.granularity === 'week') {
-      subtext = 'Casos agrupados por semana (semana inicia el lunes).'
-    } else if (chartData.sparseTimeline) {
-      subtext = 'Solo se muestran días con al menos un caso (el período tiene muchos días en cero).'
+    if (!forPrint) {
+      if (chartData.granularity === 'month') {
+        subtext = 'Casos agrupados por mes (rango amplio).'
+      } else if (chartData.granularity === 'week') {
+        subtext = 'Casos agrupados por semana (semana inicia el lunes).'
+      } else if (chartData.sparseTimeline) {
+        subtext = 'Solo se muestran días con al menos un caso (el período tiene muchos días en cero).'
+      }
     }
     const showTitleBlock = hasTitleText || Boolean(subtext)
     return {
@@ -242,7 +261,11 @@ export default function TendencyChart({
         text: title,
         subtext,
         left: 'center',
-        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' },
+        textStyle: {
+          color: '#1e293b',
+          fontSize: forPrint ? 13 : 15,
+          fontWeight: '600'
+        },
         subtextStyle: { color: '#64748b', fontSize: 11, fontWeight: 'normal' }
       },
       tooltip: {
@@ -257,25 +280,44 @@ export default function TendencyChart({
           shadowStyle: { color: 'rgba(13, 148, 136, 0.08)' }
         }
       },
-      legend: {
-        data: legendItems,
-        top: subtext ? '14%' : '10%',
-        textStyle: { color: '#64748b', fontSize: 12 }
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: chartData.months.length > 12 ? '14%' : '10%',
-        top: subtext ? '22%' : '18%',
-        containLabel: true
-      },
+      legend: forPrint
+        ? {
+            data: legendItems,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: 2,
+            top: 'auto',
+            itemGap: 14,
+            textStyle: { color: '#64748b', fontSize: 10 }
+          }
+        : {
+            data: legendItems,
+            top: subtext ? '14%' : '10%',
+            textStyle: { color: '#64748b', fontSize: 12 }
+          },
+      grid: forPrint
+        ? {
+            left: '4%',
+            right: '4%',
+            bottom: chartData.months.length > 12 ? '22%' : '18%',
+            top: showTitleBlock ? 52 : 42,
+            containLabel: true
+          }
+        : {
+            left: '3%',
+            right: '4%',
+            bottom: chartData.months.length > 12 ? '14%' : '10%',
+            top: subtext ? '22%' : '18%',
+            containLabel: true
+          },
       xAxis: {
         type: 'category',
         data: chartData.months.map(formatLabel),
         axisLabel: {
           color: '#64748b',
-          fontSize: 11,
-          rotate: chartData.months.length > 10 ? 35 : 0,
+          fontSize: forPrint ? 10 : 11,
+          rotate:
+            chartData.months.length > 10 ? (forPrint ? 28 : 35) : 0,
           ...(chartData.xLabelInterval > 0 ? { interval: chartData.xLabelInterval } : {})
         },
         axisLine: { lineStyle: { color: '#e2e8f0' } }
@@ -293,7 +335,7 @@ export default function TendencyChart({
       },
       series
     }
-  }, [chartData, title, type])
+  }, [chartData, title, type, forPrint])
 
   const cardStyle = {
     background: '#ffffff',

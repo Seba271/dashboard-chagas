@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { SkeletonTableRow } from '@/src/components/Skeleton'
 
 const INITIAL_VISIBLE = 5
@@ -17,6 +18,14 @@ export default function SectorRankingTable({ data = [], loading = false, compact
   const [sortKey, setSortKey] = useState('value')
   const [sortDir, setSortDir] = useState('desc')
   const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    const showAllForPrint = () => {
+      flushSync(() => setExpanded(true))
+    }
+    window.addEventListener('beforeprint', showAllForPrint, true)
+    return () => window.removeEventListener('beforeprint', showAllForPrint, true)
+  }, [])
 
   const total = useMemo(() => data.reduce((s, r) => s + (Number(r.value) || 0), 0), [data])
 
@@ -50,9 +59,16 @@ export default function SectorRankingTable({ data = [], loading = false, compact
   }
 
   const thBtn = (key, label) => (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => toggleSort(key)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          toggleSort(key)
+        }
+      }}
       className="comunaRankSortBtn"
       aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
@@ -60,7 +76,7 @@ export default function SectorRankingTable({ data = [], loading = false, compact
       <span className="comunaRankSortIcon" aria-hidden>
         {sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
       </span>
-    </button>
+    </div>
   )
 
   const colCount = compact ? 3 : 5
