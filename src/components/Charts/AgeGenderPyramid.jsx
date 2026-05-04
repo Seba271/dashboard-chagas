@@ -1,15 +1,13 @@
 'use client'
 
 /**
- * Pirámide poblacional clásica (edad × género).
+ * Pirámide poblacional (edad × género).
  *
- * Eje Y: grupos etarios (0-14, 15-29, 30-44, 45-59, 60+).
- * Eje X: masculino a la izquierda (valores negativos visualmente),
- *        femenino a la derecha (valores positivos).
+ * Eje Y: grupos etarios (0-14 … 60+).
+ * Izquierda: Masculino y Otro (valores negativos).
+ * Derecha: Femenino y No informa (valores positivos).
  *
- * Los casos con género distinto de masculino/femenino o sin edad se
- * muestran como texto-pie del gráfico para no introducir una tercera
- * serie que distorsione la lectura clásica de la pirámide.
+ * Sin edad o género no reconocido: pie del gráfico.
  *
  * Props:
  *   cases:   Array<{ edad?: number, genero?: string }>
@@ -30,6 +28,8 @@ const AGE_BUCKETS = [
 
 const COLOR_M = '#3b82f6'
 const COLOR_F = '#ec4899'
+const COLOR_OTRO = '#a855f7'
+const COLOR_NO_INFORMA = '#94a3b8'
 
 function ageGroupOf(edad) {
   const n = Number(edad)
@@ -41,14 +41,29 @@ function ageGroupOf(edad) {
   return '60_plus'
 }
 
+function emptyBuckets() {
+  return AGE_BUCKETS.reduce(
+    (m, b) => ({
+      ...m,
+      [b.key]: { masculino: 0, femenino: 0, otro: 0, noInforma: 0 }
+    }),
+    {}
+  )
+}
+
 export default function AgeGenderPyramid({ cases = [], loading = false }) {
-  const { masculinoData, femeninoData, otroCount, sinEdadCount, total } = useMemo(() => {
-    const buckets = AGE_BUCKETS.reduce(
-      (m, b) => ({ ...m, [b.key]: { masculino: 0, femenino: 0 } }),
-      {}
-    )
-    let otro = 0
+  const {
+    masculinoData,
+    femeninoData,
+    otroData,
+    noInformaData,
+    sinEdadCount,
+    generoNoEnumCount,
+    total
+  } = useMemo(() => {
+    const buckets = emptyBuckets()
     let sinEdad = 0
+    let generoNoEnum = 0
     for (const c of cases || []) {
       const ag = ageGroupOf(c.edad)
       if (!ag) {
@@ -58,21 +73,31 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
       const g = c.genero
       if (g === 'masculino') buckets[ag].masculino++
       else if (g === 'femenino') buckets[ag].femenino++
-      else otro++
+      else if (g === 'otro') buckets[ag].otro++
+      else if (g === 'no_informa') buckets[ag].noInforma++
+      else generoNoEnum++
     }
     const m = AGE_BUCKETS.map((b) => buckets[b.key].masculino)
     const f = AGE_BUCKETS.map((b) => buckets[b.key].femenino)
-    const t = m.reduce((s, v) => s + v, 0) + f.reduce((s, v) => s + v, 0)
-    return { masculinoData: m, femeninoData: f, otroCount: otro, sinEdadCount: sinEdad, total: t }
+    const o = AGE_BUCKETS.map((b) => buckets[b.key].otro)
+    const ni = AGE_BUCKETS.map((b) => buckets[b.key].noInforma)
+    const t = [...m, ...f, ...o, ...ni].reduce((s, v) => s + v, 0)
+    return {
+      masculinoData: m,
+      femeninoData: f,
+      otroData: o,
+      noInformaData: ni,
+      sinEdadCount: sinEdad,
+      generoNoEnumCount: generoNoEnum,
+      total: t
+    }
   }, [cases])
 
-  /** Máximo absoluto del eje X con un poco de headroom (~20 %) para que las
-      barras nunca toquen el borde del grid y los data-labels respiren. */
   const maxAbs = useMemo(() => {
-    const vals = [...masculinoData, ...femeninoData]
-    const m = Math.max(1, ...vals)
-    return m + Math.max(1, Math.ceil(m * 0.2))
-  }, [masculinoData, femeninoData])
+    const vals = [...masculinoData, ...femeninoData, ...otroData, ...noInformaData]
+    const peak = Math.max(1, ...vals)
+    return peak + Math.max(1, Math.ceil(peak * 0.2))
+  }, [masculinoData, femeninoData, otroData, noInformaData])
 
   const option = useMemo(() => {
     const labels = AGE_BUCKETS.map((b) => b.label)
@@ -107,12 +132,12 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
         }
       },
       legend: {
-        data: ['Masculino', 'Femenino'],
+        data: ['Masculino', 'Otro', 'Femenino', 'No informa'],
         top: 30,
         textStyle: { color: '#475569', fontSize: 12 },
         itemWidth: 14,
         itemHeight: 10,
-        itemGap: 18
+        itemGap: 14
       },
       grid: { left: '6%', right: '6%', bottom: '4%', top: '22%', containLabel: true },
       xAxis: {
@@ -140,48 +165,90 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
         {
           name: 'Masculino',
           type: 'bar',
-          stack: 'pyramid',
           data: masculinoData.map((v) => -v),
           itemStyle: {
             color: COLOR_M,
             borderRadius: [4, 0, 0, 4]
           },
-          barMaxWidth: 28,
+          barMaxWidth: 22,
+          barGap: '15%',
           label: {
             show: true,
             position: 'insideRight',
             color: '#ffffff',
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 700,
-            distance: 4,
+            distance: 2,
             formatter: (p) => (Math.abs(p.value) > 0 ? Math.abs(p.value) : '')
           },
           emphasis: { itemStyle: { color: '#2563eb' } }
         },
         {
+          name: 'Otro',
+          type: 'bar',
+          data: otroData.map((v) => -v),
+          itemStyle: {
+            color: COLOR_OTRO,
+            borderRadius: [4, 0, 0, 4]
+          },
+          barMaxWidth: 22,
+          barGap: '15%',
+          label: {
+            show: true,
+            position: 'insideRight',
+            color: '#ffffff',
+            fontSize: 10,
+            fontWeight: 700,
+            distance: 2,
+            formatter: (p) => (Math.abs(p.value) > 0 ? Math.abs(p.value) : '')
+          },
+          emphasis: { itemStyle: { color: '#9333ea' } }
+        },
+        {
           name: 'Femenino',
           type: 'bar',
-          stack: 'pyramid',
           data: femeninoData,
           itemStyle: {
             color: COLOR_F,
             borderRadius: [0, 4, 4, 0]
           },
-          barMaxWidth: 28,
+          barMaxWidth: 22,
+          barGap: '15%',
           label: {
             show: true,
             position: 'insideLeft',
             color: '#ffffff',
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 700,
-            distance: 4,
+            distance: 2,
             formatter: (p) => (p.value > 0 ? p.value : '')
           },
           emphasis: { itemStyle: { color: '#db2777' } }
+        },
+        {
+          name: 'No informa',
+          type: 'bar',
+          data: noInformaData,
+          itemStyle: {
+            color: COLOR_NO_INFORMA,
+            borderRadius: [0, 4, 4, 0]
+          },
+          barMaxWidth: 22,
+          barGap: '15%',
+          label: {
+            show: true,
+            position: 'insideLeft',
+            color: '#ffffff',
+            fontSize: 10,
+            fontWeight: 700,
+            distance: 2,
+            formatter: (p) => (p.value > 0 ? p.value : '')
+          },
+          emphasis: { itemStyle: { color: '#64748b' } }
         }
       ]
     }
-  }, [masculinoData, femeninoData, maxAbs, total])
+  }, [masculinoData, femeninoData, otroData, noInformaData, maxAbs, total])
 
   const cardStyle = {
     background: '#ffffff',
@@ -199,10 +266,37 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
     )
   }
 
-  if (total === 0 && otroCount === 0 && sinEdadCount === 0) {
+  const showFooter =
+    sinEdadCount > 0 || generoNoEnumCount > 0
+
+  if (total === 0 && !showFooter) {
     return (
       <div style={cardStyle} className="dashboardChartCard">
         <div style={loadingBoxStyle}>No hay casos con edad y género para los filtros actuales</div>
+      </div>
+    )
+  }
+
+  if (total === 0 && showFooter) {
+    return (
+      <div style={cardStyle} className="dashboardChartCard">
+        <div style={loadingBoxStyle}>
+          No hay casos con edad en las categorías de género para graficar
+        </div>
+        <div style={footerNoteStyle}>
+          {sinEdadCount > 0 && (
+            <span>
+              <strong>{sinEdadCount}</strong> sin edad registrada
+            </span>
+          )}
+          {sinEdadCount > 0 && generoNoEnumCount > 0 && <span style={{ color: '#cbd5e1' }}>·</span>}
+          {generoNoEnumCount > 0 && (
+            <span>
+              <strong>{generoNoEnumCount}</strong>{' '}
+              {generoNoEnumCount === 1 ? 'caso con género no reconocido' : 'casos con género no reconocido'}
+            </span>
+          )}
+        </div>
       </div>
     )
   }
@@ -212,21 +306,23 @@ export default function AgeGenderPyramid({ cases = [], loading = false }) {
       <ReactECharts
         className="dashboardEchartHost"
         option={option}
-        style={{ height: '380px', width: '100%' }}
+        style={{ height: '420px', width: '100%' }}
         opts={{ renderer: 'svg' }}
       />
-      {(otroCount > 0 || sinEdadCount > 0) && (
+      {showFooter && (
         <div style={footerNoteStyle}>
-          {otroCount > 0 && (
-            <span>
-              <strong>{otroCount}</strong> {otroCount === 1 ? 'caso' : 'casos'} de otro género o sin
-              dato
-            </span>
-          )}
-          {otroCount > 0 && sinEdadCount > 0 && <span style={{ color: '#cbd5e1' }}>·</span>}
           {sinEdadCount > 0 && (
             <span>
-              <strong>{sinEdadCount}</strong> sin edad registrada
+              <strong>{sinEdadCount}</strong> sin edad registrada (fuera de la pirámide)
+            </span>
+          )}
+          {sinEdadCount > 0 && generoNoEnumCount > 0 && <span style={{ color: '#cbd5e1' }}>·</span>}
+          {generoNoEnumCount > 0 && (
+            <span>
+              <strong>{generoNoEnumCount}</strong>{' '}
+              {generoNoEnumCount === 1
+                ? 'caso con género no reconocido'
+                : 'casos con género no reconocido'}
             </span>
           )}
         </div>
@@ -239,7 +335,7 @@ const loadingBoxStyle = {
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
-  height: '380px',
+  minHeight: '200px',
   color: '#64748b',
   fontSize: '0.875rem'
 }

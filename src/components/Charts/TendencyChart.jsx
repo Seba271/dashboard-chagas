@@ -112,6 +112,8 @@ function bucketsWithCases(seriesMaps) {
   return [...seen].sort()
 }
 
+const CASOS_LEYENDA_ANO_ACTUAL = 'Casos (año actual)'
+
 export default function TendencyChart({
   casesData = [],
   prevCasesData = [],
@@ -184,10 +186,12 @@ export default function TendencyChart({
   }
 
   const option = useMemo(() => {
-    const legendItems = chartData.hasPrev ? ['Casos', 'Casos (año anterior)'] : ['Casos']
+    const legendItems = chartData.hasPrev
+      ? [CASOS_LEYENDA_ANO_ACTUAL, 'Casos (año anterior)']
+      : [CASOS_LEYENDA_ANO_ACTUAL]
     const series = [
       {
-        name: 'Casos',
+        name: CASOS_LEYENDA_ANO_ACTUAL,
         type: type,
         data: chartData.cases,
         smooth: type === 'line',

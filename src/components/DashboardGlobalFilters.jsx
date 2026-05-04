@@ -6,6 +6,7 @@ import {
   GENERO_OPTIONS,
   AGE_GROUP_OPTIONS
 } from '@/lib/caseEnums'
+import { sectorOptionLabel } from '@/lib/sectorDisplay'
 
 function IconFunnel({ className }) {
   return (
@@ -160,8 +161,9 @@ export default function DashboardGlobalFilters({
           hidden={!open}
           className="dashboardFiltersPanel"
         >
-          <div className="dashboardFiltersOneLine">
-            <div className="dashboardFilterChip">
+          <div className="dashboardFiltersRow">
+            <div className="dashboardFiltersOneLine">
+              <div className="dashboardFilterChip">
               <label htmlFor="dash-filter-year" className="dashboardFilterInlineLabel">
                 Año
               </label>
@@ -194,8 +196,7 @@ export default function DashboardGlobalFilters({
                 <option value="all">Todos</option>
                 {sectorOptions.map((s) => (
                   <option key={s.id_sector} value={String(s.id_sector)}>
-                    {s.nombre_sector}
-                    {s.comuna ? ` — ${s.comuna}` : ''}
+                    {sectorOptionLabel(s)}
                   </option>
                 ))}
               </select>
@@ -284,20 +285,21 @@ export default function DashboardGlobalFilters({
                 ))}
               </select>
             </div>
+          </div>
 
-            {typeof onResetFilters === 'function' && (
-              <div className="dashboardFiltersResetWrap">
-                <button
-                  type="button"
-                  className="dashboardFiltersResetBtn"
-                  onClick={() => onResetFilters()}
-                  disabled={activeCount === 0}
-                  aria-label="Restablecer todos los filtros a valores por defecto"
-                >
-                  Restablecer
-                </button>
-              </div>
-            )}
+          {typeof onResetFilters === 'function' && (
+            <div className="dashboardFiltersResetWrap">
+              <button
+                type="button"
+                className="dashboardFiltersResetBtn"
+                onClick={() => onResetFilters()}
+                disabled={activeCount === 0}
+                aria-label="Restablecer todos los filtros a valores por defecto"
+              >
+                Restablecer
+              </button>
+            </div>
+          )}
           </div>
         </div>
       </div>

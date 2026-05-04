@@ -93,7 +93,7 @@ export function usePrevYearCases({
         query = query.eq('genero', generoFilter)
       }
       if (ocupacionFilter && ocupacionFilter !== 'all') {
-        query = query.ilike('ocupacion', ocupacionFilter)
+        query = query.eq('ocupacion', ocupacionFilter)
       }
       const r = ageGroupRange(ageGroupFilter)
       if (r) query = query.gte('edad', r.min).lte('edad', r.max)

@@ -18,14 +18,15 @@ import { ageGroupRange } from '@/lib/caseEnums'
  * - estadoFilter: 'all' | 'nuevo' | 'reingreso' | 'tratado'
  * - generoFilter: 'all' | 'masculino' | 'femenino' | 'otro' (según enum)
  * - ageGroupFilter: 'all' | '0_14' | ... | '60_plus'
- * - ocupacionFilter: 'all' | string (clave normalizada, lowercase). Match
- *   case-insensitive contra la columna `ocupacion`.
+ * - ocupacionFilter: 'all' | string (`codigo` del catálogo). Igualdad exacta
+ *   contra `casos_epidemiologicos.ocupacion`. Casos con texto libre antiguo
+ *   no entran al filtro hasta migrar el valor al código correspondiente.
  *
  * Cada caso devuelto incluye:
  *   {
  *     id_caso, codigo_caso, fecha_registro, genero, edad,
  *     id_sector, sector_nombre, sector_comuna, sector_lat, sector_lon,
- *     ocupacion, estado_actual, contacto_disponible, tipo_contacto,
+ *     ocupacion, estado_actual, numero_contactos,
  *     observacion_general, creado_en, actualizado_en
  *   }
  */
@@ -62,8 +63,7 @@ export function useCasesDataset({
             id_sector,
             ocupacion,
             estado_actual,
-            contacto_disponible,
-            tipo_contacto,
+            numero_contactos,
             observacion_general,
             creado_en,
             actualizado_en,
@@ -103,10 +103,7 @@ export function useCasesDataset({
       }
 
       if (ocupacionFilter && ocupacionFilter !== 'all') {
-        /* Comparación case-insensitive: la clave del filtro viene en
-           lowercase, así que ilike sin comodines acepta cualquier
-           variante de capitalización del valor original. */
-        query = query.ilike('ocupacion', ocupacionFilter)
+        query = query.eq('ocupacion', ocupacionFilter)
       }
 
       const range = ageGroupRange(ageGroupFilter)
@@ -130,8 +127,7 @@ export function useCasesDataset({
         sector_lon: r.sectores?.longitud_centroide ?? null,
         ocupacion: r.ocupacion,
         estado_actual: r.estado_actual,
-        contacto_disponible: r.contacto_disponible,
-        tipo_contacto: r.tipo_contacto,
+        numero_contactos: Number(r.numero_contactos) || 0,
         observacion_general: r.observacion_general,
         creado_en: r.creado_en,
         actualizado_en: r.actualizado_en

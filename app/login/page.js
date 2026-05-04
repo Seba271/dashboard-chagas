@@ -28,6 +28,7 @@ import { useRouter } from 'next/navigation'
 
 // Importar función para crear cliente Supabase
 import { createSupabaseClient } from '@/lib/supabase'
+import { canAccessDashboard } from '@/lib/dashboardRoles'
 
 /** Valores por defecto en el formulario (acceso demo). */
 const DEFAULT_LOGIN_EMAIL = 'chagas@chagas.cl'
@@ -72,6 +73,15 @@ export default function LoginPage() {
   
   // useEffect se ejecuta cuando el componente se monta (cuando se carga la página)
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const m = new URLSearchParams(window.location.search).get('motivo')
+      if (m === 'sin_acceso') {
+        setError('Tu cuenta no tiene acceso al panel. Consultá con un administrador.')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     /**
      * Función para verificar si el usuario ya tiene una sesión activa
      * 
@@ -86,8 +96,16 @@ export default function LoginPage() {
       const { data: { session } } = await supabase.auth.getSession()
       
       if (session) {
-        // Si hay sesión, el usuario ya está autenticado
-        // Redirigir al dashboard (no mostrar el formulario de login)
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        if (!prof || !canAccessDashboard(prof.role)) {
+          await supabase.auth.signOut()
+          setCheckingSession(false)
+          return
+        }
         router.push('/dashboard')
       } else {
         // Si no hay sesión, el usuario necesita hacer login
@@ -154,12 +172,19 @@ export default function LoginPage() {
       }
 
       // Si no hay error y hay una sesión creada
-      if (data.session) {
-        // El login fue exitoso
-        // Redirigir al usuario al dashboard
+      if (data.session && data.user) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .maybeSingle()
+        if (!prof || !canAccessDashboard(prof.role)) {
+          await supabase.auth.signOut()
+          setError('Esta cuenta no tiene permiso para acceder al panel epidemiológico.')
+          setLoading(false)
+          return
+        }
         router.push('/dashboard')
-        
-        // Refrescar el router para asegurar que los cambios se apliquen
         router.refresh()
       }
     } catch (err) {

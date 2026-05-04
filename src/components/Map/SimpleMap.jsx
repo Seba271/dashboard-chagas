@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ESTADO_COLOR, ESTADO_LABEL } from '@/lib/caseEnums'
+import { ESTADO_COLOR, ESTADO_LABEL, GENERO_LABEL } from '@/lib/caseEnums'
+import { sectorOptionLabel } from '@/lib/sectorDisplay'
 
 /**
  * Mapa territorial epidemiológico.
@@ -13,17 +14,14 @@ import { ESTADO_COLOR, ESTADO_LABEL } from '@/lib/caseEnums'
  *    así no compite con los colores semáforo de los puntos.
  *
  *  Capa 2 — Puntos individuales por caso
- *    Un círculo por cada caso del dataset filtrado. Posición pseudo-aleatoria
- *    pero determinista (semilla = id_caso) dentro del polígono del sector que
- *    le corresponde. Color tipo semáforo: rojo (nuevo), amarillo (reingreso),
- *    verde (tratado). Halo blanco para máximo contraste sobre el fondo.
- *
- *  IMPORTANTE: la posición exacta del punto NO refleja la ubicación real del
- *  caso. Es jitter visual dentro del sector — el modelo es anónimo y agregado.
+ *    Un círculo por cada caso. Posición aleatoria dentro del polígono del sector
+ *    (Voronoi recortado); semilla por id_caso para que no se muevan entre recargas.
+ *    Si no hay polígono, punto aleatorio en un disco alrededor del centroide.
+ *    Color semáforo por estado.
  *
  *  Props:
  *    sectors: Array<{ id_sector, nombre_sector, comuna, latitud_centroide, longitud_centroide }>
- *    cases:   Array<{ id_caso, id_sector, estado_actual, codigo_caso, fecha_registro, edad, genero }>
+ *    cases:   Array<{ ..., ocupacion, ocupacion_label?, ... }>
  *    loading: boolean
  */
 export default function SimpleMap({ sectors = [], cases = [], loading = false }) {
@@ -256,10 +254,16 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
             onEachFeature: (feature, layer) => {
               const p = feature.properties || {}
               const count = p.count || 0
+              const secTitulo = escapeHtml(
+                sectorOptionLabel({
+                  nombre_sector: p.nombre_sector,
+                  comuna: p.comuna,
+                  id_sector: p.id_sector
+                }) || 'Sector'
+              )
               layer.bindTooltip(
                 `<div style="font:600 12px system-ui;color:#0f172a;line-height:1.35">
-                  ${p.nombre_sector || 'Sector'}
-                  ${p.comuna ? `<div style="font:500 11px system-ui;color:#64748b">${p.comuna}</div>` : ''}
+                  ${secTitulo}
                   <div style="font:600 12px system-ui;color:#0f172a;margin-top:2px">
                     ${count} ${count === 1 ? 'caso' : 'casos'}
                   </div>
@@ -295,14 +299,25 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
           } catch (e) {}
         }
 
-        /* Puntos individuales (semáforo por estado). */
+        const caseLatLngById = buildCaseLatLngMap({
+          cases: cases || [],
+          validSectors,
+          casesBySector,
+          sectorPolygons,
+          turf
+        })
+
+        /* Puntos individuales (semáforo por estado), repartidos dentro del sector. */
         ;(cases || []).forEach((c) => {
           if (c.id_sector == null) return
           const sec = validSectors.find((s) => s.id_sector === c.id_sector)
           if (!sec) return
 
-          const polyFeat = sectorPolygons.get(c.id_sector)
-          const { lat, lng } = jitterInsidePolygon(turf, polyFeat, sec, c.id_caso)
+          const idKey = c.id_caso != null ? c.id_caso : null
+          const { lat, lng } =
+            idKey != null && caseLatLngById.has(idKey)
+              ? caseLatLngById.get(idKey)
+              : latLngOnSectorCentroid(sec, c.id_caso)
 
           const color = ESTADO_COLOR[c.estado_actual] || '#64748b'
 
@@ -329,22 +344,27 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
             bubblingMouseEvents: false
           })
 
-          const fechaTxt = c.fecha_registro ? new Date(c.fecha_registro).toLocaleDateString('es-CL') : ''
-          const estadoTxt = ESTADO_LABEL[c.estado_actual] || c.estado_actual || '—'
-          marker.bindTooltip(
-            `<div style="font:600 12px system-ui;color:#0f172a;line-height:1.4">
-              ${c.codigo_caso || `Caso ${c.id_caso}`}
-              <div style="font:500 11px system-ui;color:#64748b">${sec.nombre_sector}</div>
+          const codigoTxt = escapeHtml(c.codigo_caso || `Caso ${c.id_caso}`)
+          const sectorTxt = escapeHtml(sec.nombre_sector || c.sector_nombre || '—')
+          const estadoTxt = escapeHtml(ESTADO_LABEL[c.estado_actual] || c.estado_actual || '—')
+          const edadTxt = c.edad != null ? escapeHtml(String(c.edad)) : '—'
+          const generoTxt = escapeHtml(GENERO_LABEL[c.genero] || c.genero || '—')
+          const ocupRaw = c.ocupacion_label ?? c.ocupacion
+          const ocupTxt = ocupRaw != null && ocupRaw !== '' ? escapeHtml(String(ocupRaw)) : '—'
+          const nContactos = Number(c.numero_contactos) || 0
+          const detailHtml = `<div style="font:500 12px system-ui;color:#0f172a;line-height:1.45;max-width:280px">
+              <div><strong>Código del caso:</strong> ${codigoTxt}</div>
+              <div><strong>Sector:</strong> ${sectorTxt}</div>
               <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};border:1px solid rgba(15,23,42,.4)"></span>
-                <span style="font:600 11px system-ui;color:#0f172a">${estadoTxt}</span>
+                <span><strong>Estado actual:</strong> ${estadoTxt}</span>
               </div>
-              ${c.edad != null ? `<div style="font:500 11px system-ui;color:#475569">Edad: ${c.edad}</div>` : ''}
-              ${c.genero ? `<div style="font:500 11px system-ui;color:#475569;text-transform:capitalize">${c.genero}</div>` : ''}
-              ${fechaTxt ? `<div style="font:500 11px system-ui;color:#94a3b8;margin-top:2px">${fechaTxt}</div>` : ''}
-            </div>`,
-            { sticky: true, direction: 'top', opacity: 0.96 }
-          )
+              <div><strong>Edad:</strong> ${edadTxt}</div>
+              <div><strong>Género:</strong> ${generoTxt}</div>
+              <div><strong>Ocupación:</strong> ${ocupTxt}</div>
+              <div><strong>Cantidad de contactos directos:</strong> ${nContactos}</div>
+            </div>`
+          marker.bindPopup(detailHtml, { maxWidth: 320, closeButton: true, className: 'mapCasoPopup' })
           marker.on('mouseover', function () {
             this.setStyle({ radius: 8, weight: 2 })
             halo.setRadius(11)
@@ -499,7 +519,7 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
               <strong>{totalCasos}</strong> {totalCasos === 1 ? 'caso' : 'casos'} en el filtro
             </span>
             <span style={footerSep}>·</span>
-            <span style={{ color: '#94a3b8' }}>posiciones aleatorias dentro del sector — datos anónimos</span>
+            <span style={{ color: '#94a3b8' }}>posición aleatoria dentro de cada sector (fija por caso) — datos anónimos</span>
           </>
         ) : (
           <span>No hay sectores con coordenadas para mostrar</span>
@@ -507,6 +527,144 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
       </div>
     </div>
   )
+}
+
+function escapeHtml(s) {
+  if (s == null) return ''
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Mapa id_caso → { lat, lng }: muestra aleatoria dentro del polígono de cada sector.
+ */
+function buildCaseLatLngMap({ cases, validSectors, casesBySector, sectorPolygons, turf }) {
+  const out = new Map()
+  const sectorById = new Map(validSectors.map((s) => [s.id_sector, s]))
+
+  for (const sec of validSectors) {
+    const list = casesBySector.get(sec.id_sector)
+    if (!list?.length) continue
+    const sorted = [...list].sort((a, b) => (a.id_caso || 0) - (b.id_caso || 0))
+    const poly = sectorPolygons.get(sec.id_sector) || null
+    const placed = placeCasesRandomInPolygon({ sorted, sector: sec, polygonFeature: poly, turf })
+    for (const [id, ll] of placed) {
+      if (id != null) out.set(id, ll)
+    }
+  }
+
+  /* Casos con sector no listado en validSectors: fallback por caso. */
+  for (const c of cases) {
+    if (c.id_sector == null || c.id_caso == null) continue
+    if (out.has(c.id_caso)) continue
+    const sec = sectorById.get(c.id_sector)
+    if (!sec) continue
+    out.set(c.id_caso, latLngOnSectorCentroid(sec, c.id_caso))
+  }
+
+  return out
+}
+
+/**
+ * Asigna a cada caso una posición aleatoria dentro del polígono del sector (rechazo en bbox).
+ * Semilla estable por caso para que el mapa no “tiemble” al refetch.
+ */
+function placeCasesRandomInPolygon({ sorted, sector, polygonFeature, turf }) {
+  const out = new Map()
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i]
+    const idKey = c.id_caso
+    if (idKey == null) continue
+    const seed = caseLayoutSeed(sector.id_sector, idKey) ^ (i * 747796405)
+    const { lat, lng } = randomLatLngInsideSector({ sector, polygonFeature, turf, seed })
+    out.set(idKey, { lat, lng })
+  }
+  return out
+}
+
+function caseLayoutSeed(idSector, idCaso) {
+  const a = typeof idCaso === 'number' && !Number.isNaN(idCaso) ? idCaso : String(idCaso).split('').reduce((s, ch) => s + ch.charCodeAt(0), 0)
+  const b = Number(idSector) || 0
+  return (((a * 2654435761) ^ (b * 1597334677)) >>> 0) || 1
+}
+
+/**
+ * Un punto aleatorio dentro del polígono (uniforme en bbox + filtro), o disco alrededor del centroide.
+ */
+function randomLatLngInsideSector({ sector, polygonFeature, turf, seed }) {
+  const rand = seededRandom((seed >>> 0) ^ 0x9e3779b9)
+
+  if (polygonFeature && isPolygonFeature(polygonFeature)) {
+    try {
+      const bbox = turf.bbox(polygonFeature)
+      const minX = bbox[0]
+      const minY = bbox[1]
+      const maxX = bbox[2]
+      const maxY = bbox[3]
+      const spanX = Math.max(maxX - minX, 1e-10)
+      const spanY = Math.max(maxY - minY, 1e-10)
+
+      for (let t = 0; t < 160; t++) {
+        const lng = minX + rand() * spanX
+        const lat = minY + rand() * spanY
+        const pt = turf.point([lng, lat])
+        if (booleanPointInPolygonSafe(turf, pt, polygonFeature)) {
+          return { lat, lng }
+        }
+      }
+
+      const c0 = turf.centroid(polygonFeature)
+      const [clng, clat] = c0.geometry.coordinates
+      return { lat: clat, lng: clng }
+    } catch {
+      /* continuar a disco */
+    }
+  }
+
+  return randomInDiskAroundCentroid(sector, turf, rand)
+}
+
+function randomInDiskAroundCentroid(sector, turf, rand) {
+  const center = turf.point([sector.longitud_centroide, sector.latitud_centroide])
+  const distKm = 0.018 + rand() * 0.48
+  const bearing = rand() * 360
+  const p = turf.destination(center, distKm, bearing, { units: 'kilometers' })
+  const [lng, lat] = p.geometry.coordinates
+  return { lat, lng }
+}
+
+function isPolygonFeature(feat) {
+  const g = feat?.geometry?.type
+  return g === 'Polygon' || g === 'MultiPolygon'
+}
+
+function booleanPointInPolygonSafe(turf, pt, poly) {
+  try {
+    return Boolean(turf.booleanPointInPolygon(pt, poly))
+  } catch {
+    return false
+  }
+}
+
+/** Un solo caso: offset moderado (~55–95 m) para no caer exacto en el centroide. */
+function singleCaseJitterLatLng(sector, seed) {
+  const rand = seededRandom(((Number(seed) || 1) * 2654435761) >>> 0)
+  const r = 0.00048 + rand() * 0.00042
+  const angle = rand() * Math.PI * 2
+  return {
+    lat: sector.latitud_centroide + r * Math.cos(angle),
+    lng: sector.longitud_centroide + r * Math.sin(angle)
+  }
+}
+
+/**
+ * Respaldo: centroide con micro-offset (no usado cuando hay mapa precomputado).
+ */
+function latLngOnSectorCentroid(sector, idCaso) {
+  return singleCaseJitterLatLng(sector, idCaso)
 }
 
 /**
@@ -534,39 +692,6 @@ function seededRandom(seed) {
     let r = Math.imul(t ^ (t >>> 15), 1 | t)
     r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r
     return ((r ^ (r >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-/**
- * Posición pseudo-aleatoria pero determinista para un caso, dentro del polígono
- * del sector (si existe). Si no, jitter alrededor del centroide.
- */
-function jitterInsidePolygon(turf, polygonFeature, sector, idCaso) {
-  const rand = seededRandom(((idCaso || 1) * 2654435761) >>> 0)
-
-  if (polygonFeature) {
-    try {
-      const bbox = turf.bbox(polygonFeature)
-      const minLon = bbox[0]
-      const minLat = bbox[1]
-      const maxLon = bbox[2]
-      const maxLat = bbox[3]
-      for (let i = 0; i < 40; i++) {
-        const lon = minLon + rand() * (maxLon - minLon)
-        const lat = minLat + rand() * (maxLat - minLat)
-        const pt = turf.point([lon, lat])
-        if (turf.booleanPointInPolygon(pt, polygonFeature)) {
-          return { lat, lng: lon }
-        }
-      }
-    } catch (e) {}
-  }
-
-  const r = 0.008 + rand() * 0.012
-  const angle = rand() * Math.PI * 2
-  return {
-    lat: sector.latitud_centroide + r * Math.cos(angle),
-    lng: sector.longitud_centroide + r * Math.sin(angle)
   }
 }
 

@@ -6,9 +6,11 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { useSession } from '@/src/hooks/useSession'
+import { useProfile } from '@/src/hooks/useProfile'
 import { useSectors } from '@/src/hooks/useSectors'
 import { useCasesDataset } from '@/src/hooks/useCasesDataset'
 import { useOcupaciones } from '@/src/hooks/useOcupaciones'
@@ -80,6 +82,21 @@ function formatRelativeTime(iso, now = Date.now()) {
 export default function DashboardPage() {
   const router = useRouter()
   const { user, loading: sessionLoading, error: sessionError } = useSession()
+  const { loading: profileLoading, isAdmin, profile, canAccessDashboard } = useProfile(user)
+
+  useEffect(() => {
+    if (!user || profileLoading) return
+    if (canAccessDashboard) return
+    let cancelled = false
+    ;(async () => {
+      const supabase = createSupabaseClient()
+      await supabase.auth.signOut()
+      if (!cancelled) router.replace('/login?motivo=sin_acceso')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, profileLoading, canAccessDashboard, router])
 
   /** Ventana solo para el gráfico "Casos en el tiempo" y la serie año anterior (no recorta KPIs/mapas con año "Todos"). */
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
@@ -212,9 +229,19 @@ export default function DashboardPage() {
     [estadoCounts]
   )
 
-  /** Indicadores operativos: cuántos casos quedan abiertos y cobertura del programa. */
+  /** Indicadores operativos: backlog y magnitud de contactos directos (riesgo de red). */
   const casosSinTratar = (estadoCounts.nuevo || 0) + (estadoCounts.reingreso || 0)
-  const coberturaPct = totalCasos > 0 ? ((estadoCounts.tratado || 0) / totalCasos) * 100 : 0
+
+  const contactosStats = useMemo(() => {
+    let suma = 0
+    for (const c of cases || []) {
+      const n = Number(c.numero_contactos)
+      if (Number.isFinite(n) && n >= 0) suma += n
+    }
+    const nCasos = cases?.length ?? 0
+    const promedio = nCasos > 0 ? suma / nCasos : null
+    return { suma, promedio }
+  }, [cases])
 
   /** Última actualización del dataset (max actualizado_en o creado_en). */
   const lastUpdatedAt = useMemo(() => {
@@ -320,6 +347,15 @@ export default function DashboardPage() {
     )
   }, [sectors])
 
+  /** Mapa: si `ocupacion` coincide con un `codigo` del catálogo, mostramos el `nombre`. */
+  const casesForMap = useMemo(() => {
+    const labelBy = new Map((ocupaciones || []).map((o) => [o.value, o.label]))
+    return (cases || []).map((c) => ({
+      ...c,
+      ocupacion_label: c.ocupacion ? labelBy.get(c.ocupacion) ?? null : null
+    }))
+  }, [cases, ocupaciones])
+
   /** % por estado sobre total filtrado. */
   const pct = useCallback(
     (n) => (totalCasos > 0 ? (n / totalCasos) * 100 : 0),
@@ -360,7 +396,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (sessionLoading) {
+  if (sessionLoading || (user && profileLoading)) {
     return (
       <div className="dashboardStateScreen">
         <p>Cargando dashboard...</p>
@@ -377,6 +413,14 @@ export default function DashboardPage() {
             Ir a Login
           </button>
         </div>
+      </div>
+    )
+  }
+
+  if (user && !profileLoading && !canAccessDashboard) {
+    return (
+      <div className="dashboardStateScreen">
+        <p>Esta cuenta no tiene acceso al panel. Cerrando sesión…</p>
       </div>
     )
   }
@@ -404,6 +448,15 @@ export default function DashboardPage() {
           )}
         </div>
         <div className="dashboardPageHeaderActions">
+          {isAdmin && (
+            <Link
+              href="/dashboard/admin"
+              className="dashboardPrintBtn"
+              title="Gestionar usuarios con acceso al panel epidemiológico"
+            >
+              Usuarios y permisos
+            </Link>
+          )}
           <button
             type="button"
             className="dashboardPrintBtn"
@@ -415,6 +468,9 @@ export default function DashboardPage() {
           <div className="dashboardUserBlock">
             <span>Usuario</span>
             <strong>{user?.email || 'N/A'}</strong>
+            {!profileLoading && profile && (
+              <span className="dashboardUserRole">{isAdmin ? 'Administrador' : 'Solo lectura'}</span>
+            )}
           </div>
           <button type="button" className="dashboardLogoutBtn" onClick={handleLogout} aria-label="Cerrar sesión">
             Cerrar sesión
@@ -519,10 +575,10 @@ export default function DashboardPage() {
                   <span style={{ color: '#fca5a5', fontWeight: 600 }}>nuevo</span> y{' '}
                   <span style={{ color: '#fcd34d', fontWeight: 600 }}>reingreso</span> — son los que
                   el programa todavía debe atender.{' '}
-                  <strong>Cobertura del programa:</strong> porcentaje de casos en estado{' '}
-                  <span style={{ color: '#86efac', fontWeight: 600 }}>tratado</span> sobre el total
-                  filtrado. <strong>Edad mediana:</strong> mitad de los casos tiene edad inferior y
-                  mitad superior a este valor.
+                  <strong>Contactos directos:</strong> suma del campo{' '}
+                  <em>cantidad de contactos directos</em> en los casos del filtro (solo cantidades,
+                  sin datos identificables). <strong>Edad mediana:</strong> mitad de los casos tiene
+                  edad inferior y mitad superior a este valor.
                 </span>
               </span>
             </div>
@@ -536,20 +592,20 @@ export default function DashboardPage() {
                 subtitle="Nuevos + reingresos del filtro"
               />
               <KpiCard
-                title="Cobertura del programa"
+                title="Contactos directos (total)"
                 value={
                   casesLoading
                     ? 'Cargando...'
                     : totalCasos > 0
-                      ? `${coberturaPct.toFixed(1)} %`
+                      ? contactosStats.suma.toLocaleString('es-CL')
                       : '—'
                 }
-                icon="🎯"
-                color="#16a34a"
+                icon="🔗"
+                color="#0d9488"
                 loading={casesLoading}
                 subtitle={
-                  totalCasos > 0
-                    ? `${(estadoCounts.tratado || 0).toLocaleString('es-CL')} de ${totalCasos.toLocaleString('es-CL')} tratados`
+                  totalCasos > 0 && contactosStats.promedio != null
+                    ? `Promedio ${contactosStats.promedio.toFixed(1)} contactos por caso en el filtro`
                     : 'Sin casos en el filtro'
                 }
               />
@@ -590,12 +646,12 @@ export default function DashboardPage() {
                   role="tooltip"
                   className="dashboardInfoTooltipBubble"
                 >
-                  Casos del filtro distribuidos por grupo etario y género (
-                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>masculino</span> a la
-                  izquierda,{' '}
-                  <span style={{ color: '#f9a8d4', fontWeight: 600 }}>femenino</span> a la derecha).
-                  Los casos de otro género o sin edad se contabilizan al pie del gráfico para no
-                  distorsionar la lectura clásica de la pirámide.
+                  Casos del filtro por grupo etario:{' '}
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>Masculino</span> y{' '}
+                  <span style={{ color: '#a855f7', fontWeight: 600 }}>Otro</span> a la izquierda;{' '}
+                  <span style={{ color: '#f9a8d4', fontWeight: 600 }}>Femenino</span> y{' '}
+                  <span style={{ color: '#94a3b8', fontWeight: 600 }}>No informa</span> a la derecha.
+                  Sin edad o con género no reconocido van al pie del gráfico.
                 </span>
               </span>
             </div>
@@ -771,12 +827,14 @@ export default function DashboardPage() {
                   i
                 </button>
                 <span id="map-info-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                  Cada sector se oscurece según su volumen de casos. Los puntos son casos
-                  individuales con posición aleatoria dentro del sector y color por estado
-                  (<span style={{ color: '#fca5a5', fontWeight: 600 }}>rojo: nuevo</span>,{' '}
+                  Cada sector se oscurece según su volumen de casos. Los puntos representan casos
+                  individuales anclados al centroide del sector (con un leve corrimiento solo para
+                  separarlos visualmente) y color por estado (
+                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>rojo: nuevo</span>,{' '}
                   <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarillo: reingreso</span>,{' '}
-                  <span style={{ color: '#86efac', fontWeight: 600 }}>verde: tratado</span>).
-                  Datos anónimos y agregados.
+                  <span style={{ color: '#86efac', fontWeight: 600 }}>verde: tratado</span>). Al
+                  hacer clic en un punto se abre el detalle del caso, incluida la cantidad de
+                  contactos directos como indicador epidemiológico. Datos anónimos y agregados.
                 </span>
               </span>
             </div>
@@ -784,7 +842,7 @@ export default function DashboardPage() {
           <div className="dashboardMapCard">
             <SimpleMap
               sectors={mapSectors}
-              cases={cases || []}
+              cases={casesForMap}
               loading={casesLoading || sectorsLoading}
             />
           </div>

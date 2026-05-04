@@ -2,11 +2,9 @@
 
 import { useState } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
-import {
-  ESTADO_OPTIONS,
-  GENERO_OPTIONS,
-  TIPO_CONTACTO_OPTIONS
-} from '@/lib/caseEnums'
+import { ESTADO_OPTIONS, GENERO_OPTIONS } from '@/lib/caseEnums'
+import { useOcupaciones } from '@/src/hooks/useOcupaciones'
+import { sectorOptionLabel } from '@/lib/sectorDisplay'
 
 const FORM_DEFAULTS = {
   genero: '',
@@ -14,8 +12,7 @@ const FORM_DEFAULTS = {
   id_sector: '',
   ocupacion: '',
   estado_actual: 'nuevo',
-  contacto_disponible: false,
-  tipo_contacto: 'no_informa',
+  numero_contactos: '0',
   observacion_general: ''
 }
 
@@ -30,6 +27,7 @@ const FORM_DEFAULTS = {
  * - onCreated?: () => void  (opcional, para refrescar el dataset del dashboard)
  */
 export default function CaseRegistrationForm({ sectors = [], onCreated }) {
+  const { data: ocupacionesOpts = [], loading: ocupacionesLoading } = useOcupaciones()
   const [form, setForm] = useState(FORM_DEFAULTS)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
@@ -45,6 +43,11 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
     if (form.edad === '' || form.edad === null) return 'Ingresa la edad.'
     const edadNum = Number(form.edad)
     if (Number.isNaN(edadNum) || edadNum < 0 || edadNum > 120) return 'La edad debe ser un número entre 0 y 120.'
+    const nContactos = Number(form.numero_contactos)
+    if (form.numero_contactos === '' || form.numero_contactos == null) return 'Ingresa la cantidad de contactos directos (0 si no aplica).'
+    if (!Number.isInteger(nContactos) || nContactos < 0 || nContactos > 9999) {
+      return 'La cantidad de contactos directos debe ser un entero entre 0 y 9999.'
+    }
     if (!form.estado_actual) return 'Selecciona el estado.'
     return null
   }
@@ -70,8 +73,7 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
         id_sector: Number(form.id_sector),
         ocupacion: form.ocupacion?.trim() || null,
         estado_actual: form.estado_actual,
-        contacto_disponible: !!form.contacto_disponible,
-        tipo_contacto: form.tipo_contacto || 'no_informa',
+        numero_contactos: Number(form.numero_contactos),
         observacion_general: form.observacion_general?.trim() || null,
         creado_por: userId
       }
@@ -156,7 +158,7 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
                 <option value="">Selecciona…</option>
                 {sectors.map((s) => (
                   <option key={s.id_sector} value={s.id_sector}>
-                    {s.nombre_sector}{s.comuna ? ` — ${s.comuna}` : ''}
+                    {sectorOptionLabel(s)}
                   </option>
                 ))}
               </select>
@@ -178,36 +180,36 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
 
             <label className="caseRegField">
               <span className="caseRegLabel">Ocupación</span>
-              <input
-                type="text"
+              <select
                 className="caseRegInput"
                 value={form.ocupacion}
                 onChange={(e) => updateField('ocupacion', e.target.value)}
-                placeholder="Opcional"
-                maxLength={120}
-              />
-            </label>
-
-            <label className="caseRegField caseRegField--check">
-              <input
-                type="checkbox"
-                checked={form.contacto_disponible}
-                onChange={(e) => updateField('contacto_disponible', e.target.checked)}
-              />
-              <span className="caseRegCheckLabel">Contacto disponible</span>
+                disabled={ocupacionesLoading}
+              >
+                <option value="">Sin especificar (opcional)</option>
+                {ocupacionesOpts.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="caseRegField">
-              <span className="caseRegLabel">Tipo de contacto</span>
-              <select
+              <span className="caseRegLabel">Cantidad de contactos directos *</span>
+              <input
+                type="number"
                 className="caseRegInput"
-                value={form.tipo_contacto}
-                onChange={(e) => updateField('tipo_contacto', e.target.value)}
-              >
-                {TIPO_CONTACTO_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                min={0}
+                max={9999}
+                step={1}
+                value={form.numero_contactos}
+                onChange={(e) => updateField('numero_contactos', e.target.value)}
+                required
+              />
+              <span className="caseRegHint" style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.8rem' }}>
+                Número de personas con contacto directo con el caso (no es un teléfono ni dato identificable).
+              </span>
             </label>
 
             <label className="caseRegField caseRegField--full">
