@@ -49,7 +49,7 @@ function IconChevron({ open, className }) {
 }
 
 /**
- * Filtros globales del modelo epidemiológico (sector, estado, año, género, edad).
+ * Filtros globales del modelo epidemiológico (sector, estado, año, género, grupo etario).
  */
 export default function DashboardGlobalFilters({
   globalYear,
@@ -123,7 +123,7 @@ export default function DashboardGlobalFilters({
                 i
               </button>
               <span id="filters-scope-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                Año, sector, estado, género, edad y ocupación recortan KPIs, mapa, ranking y demás
+                Año, sector (solo cuatro lugares poblados del programa), estado, género, grupo etario y ocupación recortan KPIs, mapa, ranking y demás
                 gráficos del panel. Con año <strong>Todos</strong> se consideran todos los registros
                 en base de datos (sin límite de fechas en el panel). El gráfico <em>Casos en el
                 tiempo</em> tiene su propio rango Desde/Hasta debajo del gráfico.
@@ -248,7 +248,7 @@ export default function DashboardGlobalFilters({
 
             <div className="dashboardFilterChip">
               <label htmlFor="dash-filter-age" className="dashboardFilterInlineLabel">
-                Edad
+                Grupo etario
               </label>
               <select
                 id="dash-filter-age"

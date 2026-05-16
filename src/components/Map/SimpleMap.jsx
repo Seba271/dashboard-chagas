@@ -1,8 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ESTADO_COLOR, ESTADO_LABEL, GENERO_LABEL } from '@/lib/caseEnums'
+import { ESTADO_OPTIONS, ESTADO_COLOR, GENERO_LABEL, ESTADO_LABEL } from '@/lib/caseEnums'
+import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
 import { sectorOptionLabel } from '@/lib/sectorDisplay'
+
+/** Semáforo en el mapa: tratado en gris para no competir con la capa territorial (azules). */
+const MAP_ESTADO_COLOR = {
+  ...ESTADO_COLOR,
+  tratado: '#737373'
+}
 
 /**
  * Mapa territorial epidemiológico.
@@ -13,17 +20,191 @@ import { sectorOptionLabel } from '@/lib/sectorDisplay'
  *    secuencial azul epidemiológico (claro → índigo) según número de casos;
  *    estándar en mapas de carga sin semántica de riesgo y complementa el semáforo.
  *
- *  Capa 2 — Puntos individuales por caso
- *    Un círculo por cada caso. Posición aleatoria dentro del polígono del sector
- *    (Voronoi recortado); semilla por id_caso para que no se muevan entre recargas.
- *    Si no hay polígono, punto aleatorio en un disco alrededor del centroide.
- *    Color semáforo por estado.
+ *  Capa 2 — Marcadores por sector
+ *    Un círculo en el centroide de cada sector. Al hacer clic (o clic en el polígono) se abre
+ *    el desglose al costado fuera del mapa; cada estado se expande para listar género, edad al registro,
+ *    ocupación, fechas y contactos por caso (sin datos identificables extra).
  *
  *  Props:
  *    sectors: Array<{ id_sector, nombre_sector, comuna, latitud_centroide, longitud_centroide }>
  *    cases:   Array<{ ..., ocupacion, ocupacion_label?, ... }>
  *    loading: boolean
  */
+function sortCasosStable(arr) {
+  return [...(arr || [])].sort((a, b) => (Number(a.id_caso) || 0) - (Number(b.id_caso) || 0))
+}
+
+function formatCaseDateLabelPlain(iso) {
+  if (iso == null || iso === '') return '—'
+  const slice = typeof iso === 'string' ? iso.slice(0, 10) : ''
+  if (!slice) return '—'
+  try {
+    return new Date(`${slice}T12:00:00`).toLocaleDateString('es-CL')
+  } catch {
+    return slice
+  }
+}
+
+function ChevronTiny() {
+  return (
+    <svg
+      className="map-sector-estado-summary__chev"
+      width={14}
+      height={14}
+      viewBox="0 0 24 24"
+      aria-hidden
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+    </svg>
+  )
+}
+
+function CaseDetailCard({ caso, estadoBorderColor }) {
+  const codigo = caso.codigo_caso || (caso.id_caso != null ? `Caso #${caso.id_caso}` : 'Caso')
+  const estadoTxt = ESTADO_LABEL[caso.estado_actual] || caso.estado_actual || '—'
+  const gen = GENERO_LABEL[caso.genero] || caso.genero || '—'
+  const edad = ageCompletedAtReference(caso.fecha_nacimiento, caso.fecha_registro)
+  const edadTxt = edad != null ? `${edad} años` : '—'
+  const fnac = formatCaseDateLabelPlain(caso.fecha_nacimiento)
+  const freg = formatCaseDateLabelPlain(caso.fecha_registro)
+  const ocupRaw = caso.ocupacion_label ?? caso.ocupacion
+  const ocup = ocupRaw != null && ocupRaw !== '' ? String(ocupRaw) : '—'
+  const nc = Number(caso.numero_contactos)
+  const contactos = Number.isFinite(nc) ? String(nc) : '—'
+
+  const field = (label, value) => (
+    <div className="map-sector-case-field">
+      <div className="map-sector-case-field-label">{label}</div>
+      <div className="map-sector-case-field-value">{value}</div>
+    </div>
+  )
+
+  return (
+    <article
+      className="map-sector-case-card"
+      style={{
+        borderLeft: `4px solid ${estadoBorderColor}`
+      }}
+    >
+      <div className="map-sector-case-heading">{codigo}</div>
+      <div className="map-sector-case-field-grid">
+        {field('Estado', estadoTxt)}
+        {field('Género', gen)}
+        {field('Edad al registro', edadTxt)}
+        {field('Fecha de nacimiento', fnac)}
+        {field('Fecha de registro', freg)}
+        {field('Ocupación', ocup)}
+        {field('Contactos directos', contactos)}
+      </div>
+    </article>
+  )
+}
+
+function SectorBreakdownAside({ sector, casosPorEstado, otrosCasos, total, onClose }) {
+  const titulo =
+    sectorOptionLabel({
+      nombre_sector: sector.nombre_sector,
+      comuna: sector.comuna,
+      id_sector: sector.id_sector
+    }) || `Sector ${sector.id_sector}`
+
+  return (
+    <aside className="map-sector-breakdown-aside" aria-label="Desglose del sector seleccionado">
+      <header className="map-sector-breakdown-aside-header">
+        <div style={{ minWidth: 0 }}>
+          <h3 className="map-sector-breakdown-title">{titulo}</h3>
+          <p className="map-sector-breakdown-sub">
+            {total === 1 ? '1 caso' : `${total} casos`} con el filtro actual
+          </p>
+        </div>
+        <button type="button" className="map-sector-breakdown-close" onClick={onClose} aria-label="Cerrar panel">
+          <span aria-hidden style={{ transform: 'translateY(-1px)', display: 'block' }}>
+            ✕
+          </span>
+        </button>
+      </header>
+      <div className="map-sector-breakdown-aside-inner">
+        <details open className="map-sector-breakdown map-sector-breakdown-root-details">
+          <summary>Desglose por estado</summary>
+          <div className="map-sector-estados-stack">
+            {ESTADO_OPTIONS.map((o) => {
+              const col = MAP_ESTADO_COLOR[o.value] || '#64748b'
+              const lista = sortCasosStable(casosPorEstado[o.value] || [])
+              const n = lista.length
+
+              return (
+                <details key={o.value} className="map-sector-estado">
+                  <summary className="map-sector-estado-summary">
+                    <span className="map-sector-estado-summary__left">
+                      <span
+                        className="map-sector-estado-summary__dot"
+                        style={{
+                          background: col
+                        }}
+                      />
+                      {o.label}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span className="map-sector-count-pill">{n}</span>
+                      <ChevronTiny />
+                    </span>
+                  </summary>
+                  <div className="map-sector-detail-body">
+                    {n > 0 ? (
+                      <div className="map-sector-case-scroll">
+                        {lista.map((c, idx) => (
+                          <CaseDetailCard
+                            key={`${c.id_caso ?? c.codigo_caso ?? idx}`}
+                            caso={c}
+                            estadoBorderColor={col}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="map-sector-estado-muted">Sin casos en este estado.</div>
+                    )}
+                  </div>
+                </details>
+              )
+            })}
+          </div>
+          {otrosCasos.length > 0 && (
+            <details className="map-sector-otros-block">
+              <summary className="map-sector-estado-summary">
+                <span className="map-sector-estado-summary__left">
+                  <span
+                    className="map-sector-estado-summary__dot"
+                    style={{ background: '#a8a29e', borderColor: '#d6d3d1' }}
+                  />
+                  Otros estados
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span className="map-sector-count-pill map-sector-count-pill--amber">{otrosCasos.length}</span>
+                  <ChevronTiny />
+                </span>
+              </summary>
+              <div className="map-sector-detail-body map-sector-detail-body--otros">
+                <div className="map-sector-case-scroll">
+                  {sortCasosStable(otrosCasos).map((c, idx) => (
+                    <CaseDetailCard
+                      key={`otros-${c.id_caso ?? c.codigo_caso ?? idx}`}
+                      caso={c}
+                      estadoBorderColor="#a8a29e"
+                    />
+                  ))}
+                </div>
+              </div>
+            </details>
+          )}
+        </details>
+      </div>
+    </aside>
+  )
+}
+
 export default function SimpleMap({ sectors = [], cases = [], loading = false }) {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
@@ -32,6 +213,29 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
   const [mounted, setMounted] = useState(false)
   const [error, setError] = useState(null)
   const [mapReady, setMapReady] = useState(false)
+  const [sectorBreakdown, setSectorBreakdown] = useState(null)
+
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map || !mapReady) return
+    const id = requestAnimationFrame(() => {
+      try {
+        map.invalidateSize({ animate: false })
+      } catch {
+        /* ignore */
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [sectorBreakdown, mapReady])
+
+  useEffect(() => {
+    if (!sectorBreakdown) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') setSectorBreakdown(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sectorBreakdown])
 
   const handleResetZoom = () => {
     const map = mapInstanceRef.current
@@ -176,6 +380,24 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
         const map = mapInstanceRef.current
         if (!map) return
 
+        const openBreakdownForSector = (secRow, opts = {}) => {
+          const { desdeCentroid = false } = opts
+          const sectorCasesInner = casesBySector.get(secRow.id_sector) || []
+          const cp = { nuevo: [], reingreso: [], tratado: [] }
+          const otros = []
+          for (const c of sectorCasesInner) {
+            const st = c.estado_actual
+            if (st != null && Object.prototype.hasOwnProperty.call(cp, st)) cp[st].push(c)
+            else otros.push(c)
+          }
+          setSectorBreakdown({
+            sector: secRow,
+            casosPorEstado: cp,
+            otrosCasos: otros,
+            total: sectorCasesInner.length,
+            desdeCentroid
+          })
+        }
         const points = turf.featureCollection(
           validSectors.map((s) =>
             turf.point([s.longitud_centroide, s.latitud_centroide], { id_sector: s.id_sector })
@@ -276,6 +498,13 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
               layer.on('mouseout', function () {
                 this.setStyle({ weight: 1.5, color: '#ffffff' })
               })
+              layer.on('click', (clickEv) => {
+                const dom = clickEv.originalEvent
+                if (dom) L.DomEvent.stopPropagation(dom)
+                const sid = p.id_sector
+                const sectorRow = validSectors.find((s) => String(s.id_sector) === String(sid))
+                if (sectorRow) openBreakdownForSector(sectorRow, { desdeCentroid: false })
+              })
             }
           }).addTo(map)
           layersRef.current.polygons = polygonLayer
@@ -299,34 +528,16 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
           } catch (e) {}
         }
 
-        const caseLatLngById = buildCaseLatLngMap({
-          cases: cases || [],
-          validSectors,
-          casesBySector,
-          sectorPolygons,
-          turf
-        })
+        /* Un marcador por sector (centroide): clic → panel lateral (no popup Leaflet). */
+        validSectors.forEach((sec) => {
+          const lat = sec.latitud_centroide
+          const lng = sec.longitud_centroide
 
-        /* Puntos individuales (semáforo por estado), repartidos dentro del sector. */
-        ;(cases || []).forEach((c) => {
-          if (c.id_sector == null) return
-          const sec = validSectors.find((s) => s.id_sector === c.id_sector)
-          if (!sec) return
-
-          const idKey = c.id_caso != null ? c.id_caso : null
-          const { lat, lng } =
-            idKey != null && caseLatLngById.has(idKey)
-              ? caseLatLngById.get(idKey)
-              : latLngOnSectorCentroid(sec, c.id_caso)
-
-          const color = ESTADO_COLOR[c.estado_actual] || '#64748b'
-
-          /* Halo blanco para destacar sobre los polígonos coloreados. */
           const halo = L.circleMarker([lat, lng], {
             pane: 'casesPane',
-            radius: 7,
+            radius: 12,
             color: '#ffffff',
-            weight: 2.5,
+            weight: 3,
             fillColor: '#ffffff',
             fillOpacity: 0,
             opacity: 0.95,
@@ -336,44 +547,28 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
 
           const marker = L.circleMarker([lat, lng], {
             pane: 'casesPane',
-            radius: 5,
+            radius: 8,
             color: '#0f172a',
-            fillColor: color,
+            fillColor: '#ffffff',
             fillOpacity: 1,
-            weight: 1.2,
+            weight: 2.5,
             bubblingMouseEvents: false
           })
 
-          const codigoTxt = escapeHtml(c.codigo_caso || `Caso ${c.id_caso}`)
-          const sectorTxt = escapeHtml(sec.nombre_sector || c.sector_nombre || '—')
-          const estadoTxt = escapeHtml(ESTADO_LABEL[c.estado_actual] || c.estado_actual || '—')
-          const edadTxt = c.edad != null ? escapeHtml(String(c.edad)) : '—'
-          const generoTxt = escapeHtml(GENERO_LABEL[c.genero] || c.genero || '—')
-          const ocupRaw = c.ocupacion_label ?? c.ocupacion
-          const ocupTxt = ocupRaw != null && ocupRaw !== '' ? escapeHtml(String(ocupRaw)) : '—'
-          const nContactos = Number(c.numero_contactos) || 0
-          const detailHtml = `<div style="font:500 12px system-ui;color:#0f172a;line-height:1.45;max-width:280px">
-              <div><strong>Código del caso:</strong> ${codigoTxt}</div>
-              <div><strong>Sector:</strong> ${sectorTxt}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};border:1px solid rgba(15,23,42,.4)"></span>
-                <span><strong>Estado actual:</strong> ${estadoTxt}</span>
-              </div>
-              <div><strong>Edad:</strong> ${edadTxt}</div>
-              <div><strong>Género:</strong> ${generoTxt}</div>
-              <div><strong>Ocupación:</strong> ${ocupTxt}</div>
-              <div><strong>Cantidad de contactos directos:</strong> ${nContactos}</div>
-            </div>`
-          marker.bindPopup(detailHtml, { maxWidth: 320, closeButton: true, className: 'mapCasoPopup' })
+          marker.on('click', (clickEv) => {
+            const dom = clickEv.originalEvent
+            if (dom) L.DomEvent.stopPropagation(dom)
+            openBreakdownForSector(sec, { desdeCentroid: true })
+          })
           marker.on('mouseover', function () {
-            this.setStyle({ radius: 8, weight: 2 })
-            halo.setRadius(11)
-            halo.setStyle({ weight: 3 })
+            this.setStyle({ radius: 10, weight: 3 })
+            halo.setRadius(14)
+            halo.setStyle({ weight: 3.5 })
           })
           marker.on('mouseout', function () {
-            this.setStyle({ radius: 5, weight: 1.2 })
-            halo.setRadius(7)
-            halo.setStyle({ weight: 2.5 })
+            this.setStyle({ radius: 8, weight: 2.5 })
+            halo.setRadius(12)
+            halo.setStyle({ weight: 3 })
           })
           marker.addTo(map)
           layersRef.current.markers.push(marker)
@@ -433,97 +628,118 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
 
   return (
     <div
+      className="simple-map-shell"
       style={{
         background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: '14px',
-        overflow: 'hidden',
-        boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.05)'
+        overflow: 'hidden'
       }}
     >
-      <div style={{ position: 'relative', width: '100%' }}>
-        <div
-          ref={mapRef}
-          style={{
-            height: '520px',
-            width: '100%',
-            display: 'block',
-            position: 'relative',
-            zIndex: 0,
-            background: '#f8fafc'
-          }}
-        />
-        {mapReady && (
-          <>
-            <div title="Leyenda" style={legendStyle}>
-              <div style={legendTitle}>Densidad por sector</div>
-              <div style={{ marginBottom: 4 }}>
-                <span style={gradientBar} />
-              </div>
-              <div style={legendScaleRow}>
-                <span>0</span>
-                <span>{Math.ceil(((cases?.length ?? 0) / Math.max(1, sectors?.length || 1)) * 0.5)}</span>
-                <span>{(cases?.length ?? 0) > 0 ? Math.max(1, Math.ceil((cases?.length ?? 0) / Math.max(1, sectors?.length || 1))) : '—'}+</span>
-              </div>
-              <div style={{ ...legendTitle, marginTop: 12 }}>Estado del caso</div>
-              <div style={legendItemRow}>
-                <span style={{ ...legendDot, background: ESTADO_COLOR.nuevo }} />
-                <span>Nuevo</span>
-              </div>
-              <div style={legendItemRow}>
-                <span style={{ ...legendDot, background: ESTADO_COLOR.reingreso }} />
-                <span>Reingreso</span>
-              </div>
-              <div style={legendItemRow}>
-                <span style={{ ...legendDot, background: ESTADO_COLOR.tratado }} />
-                <span>Tratado</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleResetZoom}
-              title="Vista general"
-              style={resetBtnStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f0fdfa'
-                e.currentTarget.style.borderColor = '#0d9488'
-                e.currentTarget.style.transform = 'scale(1.05)'
+      <div className="map-sector-breakdown-layout">
+        <div className="map-sector-map-shell">
+          <div style={{ position: 'relative', width: '100%' }}>
+            <div
+              ref={mapRef}
+              style={{
+                height: '520px',
+                width: '100%',
+                display: 'block',
+                position: 'relative',
+                zIndex: 0,
+                background: '#f8fafc'
               }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#ffffff'
-                e.currentTarget.style.borderColor = '#e2e8f0'
-                e.currentTarget.style.transform = 'scale(1)'
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" style={{ display: 'block' }}>
-                <polygon points="5,5 10,6 6,10" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
-                <polygon points="19,5 18,10 14,6" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
-                <polygon points="19,19 18,14 14,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
-                <polygon points="5,19 6,14 10,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
-              </svg>
-            </button>
-          </>
-        )}
-      </div>
-      <div style={footerStyle}>
-        {loading ? (
-          <span>Cargando datos del mapa…</span>
-        ) : totalSectores > 0 ? (
-          <>
-            <span style={footerKpi}>
-              <strong>{totalSectores}</strong>{' '}
-              {totalSectores === 1 ? 'sector' : 'sectores'}
-            </span>
-            <span style={footerSep}>·</span>
-            <span style={footerKpi}>
-              <strong>{totalCasos}</strong> {totalCasos === 1 ? 'caso' : 'casos'} en el filtro
-            </span>
-            <span style={footerSep}>·</span>
-            <span style={{ color: '#94a3b8' }}>posición aleatoria dentro de cada sector (fija por caso) — datos anónimos</span>
-          </>
-        ) : (
-          <span>No hay sectores con coordenadas para mostrar</span>
-        )}
+            />
+            {mapReady ? (
+              <div className="map-stats-overlay">
+                <div className="map-stats-overlay__card">
+                  {loading ? (
+                    <span className="map-stats-loading">Actualizando datos del mapa</span>
+                  ) : totalSectores > 0 ? (
+                    <>
+                      <div className="map-stats-chips">
+                        <span className="map-stats-chip">
+                          <span className="map-stats-chip__n">{totalSectores}</span>
+                          <span className="map-stats-chip__label">{totalSectores === 1 ? 'sector' : 'sectores'}</span>
+                        </span>
+                        <span className="map-stats-chip__divider" aria-hidden />
+                        <span className="map-stats-chip">
+                          <span className="map-stats-chip__n">{totalCasos}</span>
+                          <span className="map-stats-chip__label">
+                            {totalCasos === 1 ? 'caso en el filtro' : 'casos en el filtro'}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="map-overlay-stats-hint">
+                        Clic en el sector coloreado o en el marcador del centro → desglose lateral.
+                      </div>
+                    </>
+                  ) : (
+                    <span className="map-stats-overlay__empty-msg">Sin sectores con coordenadas para el mapa</span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {mapReady && (
+              <>
+                <div className="map-legend-floating" title="Leyenda">
+                  <p className="map-legend-floating__heading">Densidad por sector</p>
+                  <span className="map-legend-gradient-bar" />
+                  <div className="map-legend-scale">
+                    <span>0</span>
+                    <span>{Math.ceil(((cases?.length ?? 0) / Math.max(1, sectors?.length || 1)) * 0.5)}</span>
+                    <span>
+                      {(cases?.length ?? 0) > 0
+                        ? Math.max(1, Math.ceil((cases?.length ?? 0) / Math.max(1, sectors?.length || 1)))
+                        : '—'}
+                      +
+                    </span>
+                  </div>
+                  {sectorBreakdown?.desdeCentroid ? (
+                    <div className="map-legend-rule">
+                      <p className="map-legend-floating__heading map-legend-floating__heading--estado">
+                        Estado del caso
+                      </p>
+                      <div className="map-legend-item">
+                        <span className="map-legend-dot" style={{ background: MAP_ESTADO_COLOR.nuevo }} />
+                        <span>Nuevo</span>
+                      </div>
+                      <div className="map-legend-item">
+                        <span className="map-legend-dot" style={{ background: MAP_ESTADO_COLOR.reingreso }} />
+                        <span>Reingreso</span>
+                      </div>
+                      <div className="map-legend-item">
+                        <span className="map-legend-dot" style={{ background: MAP_ESTADO_COLOR.tratado }} />
+                        <span>Tratado</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="map-control-fab"
+                  onClick={handleResetZoom}
+                  title="Vista general del mapa"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" style={{ display: 'block' }}>
+                    <polygon points="5,5 10,6 6,10" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+                    <polygon points="19,5 18,10 14,6" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+                    <polygon points="19,19 18,14 14,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+                    <polygon points="5,19 6,14 10,18" fill="#0d9488" stroke="#0d9488" strokeWidth="0.6" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {sectorBreakdown ? (
+          <SectorBreakdownAside
+            sector={sectorBreakdown.sector}
+            casosPorEstado={sectorBreakdown.casosPorEstado}
+            otrosCasos={sectorBreakdown.otrosCasos}
+            total={sectorBreakdown.total}
+            onClose={() => setSectorBreakdown(null)}
+          />
+        ) : null}
       </div>
     </div>
   )
@@ -539,135 +755,6 @@ function escapeHtml(s) {
 }
 
 /**
- * Mapa id_caso → { lat, lng }: muestra aleatoria dentro del polígono de cada sector.
- */
-function buildCaseLatLngMap({ cases, validSectors, casesBySector, sectorPolygons, turf }) {
-  const out = new Map()
-  const sectorById = new Map(validSectors.map((s) => [s.id_sector, s]))
-
-  for (const sec of validSectors) {
-    const list = casesBySector.get(sec.id_sector)
-    if (!list?.length) continue
-    const sorted = [...list].sort((a, b) => (a.id_caso || 0) - (b.id_caso || 0))
-    const poly = sectorPolygons.get(sec.id_sector) || null
-    const placed = placeCasesRandomInPolygon({ sorted, sector: sec, polygonFeature: poly, turf })
-    for (const [id, ll] of placed) {
-      if (id != null) out.set(id, ll)
-    }
-  }
-
-  /* Casos con sector no listado en validSectors: fallback por caso. */
-  for (const c of cases) {
-    if (c.id_sector == null || c.id_caso == null) continue
-    if (out.has(c.id_caso)) continue
-    const sec = sectorById.get(c.id_sector)
-    if (!sec) continue
-    out.set(c.id_caso, latLngOnSectorCentroid(sec, c.id_caso))
-  }
-
-  return out
-}
-
-/**
- * Asigna a cada caso una posición aleatoria dentro del polígono del sector (rechazo en bbox).
- * Semilla estable por caso para que el mapa no “tiemble” al refetch.
- */
-function placeCasesRandomInPolygon({ sorted, sector, polygonFeature, turf }) {
-  const out = new Map()
-  for (let i = 0; i < sorted.length; i++) {
-    const c = sorted[i]
-    const idKey = c.id_caso
-    if (idKey == null) continue
-    const seed = caseLayoutSeed(sector.id_sector, idKey) ^ (i * 747796405)
-    const { lat, lng } = randomLatLngInsideSector({ sector, polygonFeature, turf, seed })
-    out.set(idKey, { lat, lng })
-  }
-  return out
-}
-
-function caseLayoutSeed(idSector, idCaso) {
-  const a = typeof idCaso === 'number' && !Number.isNaN(idCaso) ? idCaso : String(idCaso).split('').reduce((s, ch) => s + ch.charCodeAt(0), 0)
-  const b = Number(idSector) || 0
-  return (((a * 2654435761) ^ (b * 1597334677)) >>> 0) || 1
-}
-
-/**
- * Un punto aleatorio dentro del polígono (uniforme en bbox + filtro), o disco alrededor del centroide.
- */
-function randomLatLngInsideSector({ sector, polygonFeature, turf, seed }) {
-  const rand = seededRandom((seed >>> 0) ^ 0x9e3779b9)
-
-  if (polygonFeature && isPolygonFeature(polygonFeature)) {
-    try {
-      const bbox = turf.bbox(polygonFeature)
-      const minX = bbox[0]
-      const minY = bbox[1]
-      const maxX = bbox[2]
-      const maxY = bbox[3]
-      const spanX = Math.max(maxX - minX, 1e-10)
-      const spanY = Math.max(maxY - minY, 1e-10)
-
-      for (let t = 0; t < 160; t++) {
-        const lng = minX + rand() * spanX
-        const lat = minY + rand() * spanY
-        const pt = turf.point([lng, lat])
-        if (booleanPointInPolygonSafe(turf, pt, polygonFeature)) {
-          return { lat, lng }
-        }
-      }
-
-      const c0 = turf.centroid(polygonFeature)
-      const [clng, clat] = c0.geometry.coordinates
-      return { lat: clat, lng: clng }
-    } catch {
-      /* continuar a disco */
-    }
-  }
-
-  return randomInDiskAroundCentroid(sector, turf, rand)
-}
-
-function randomInDiskAroundCentroid(sector, turf, rand) {
-  const center = turf.point([sector.longitud_centroide, sector.latitud_centroide])
-  const distKm = 0.018 + rand() * 0.48
-  const bearing = rand() * 360
-  const p = turf.destination(center, distKm, bearing, { units: 'kilometers' })
-  const [lng, lat] = p.geometry.coordinates
-  return { lat, lng }
-}
-
-function isPolygonFeature(feat) {
-  const g = feat?.geometry?.type
-  return g === 'Polygon' || g === 'MultiPolygon'
-}
-
-function booleanPointInPolygonSafe(turf, pt, poly) {
-  try {
-    return Boolean(turf.booleanPointInPolygon(pt, poly))
-  } catch {
-    return false
-  }
-}
-
-/** Un solo caso: offset moderado (~55–95 m) para no caer exacto en el centroide. */
-function singleCaseJitterLatLng(sector, seed) {
-  const rand = seededRandom(((Number(seed) || 1) * 2654435761) >>> 0)
-  const r = 0.00048 + rand() * 0.00042
-  const angle = rand() * Math.PI * 2
-  return {
-    lat: sector.latitud_centroide + r * Math.cos(angle),
-    lng: sector.longitud_centroide + r * Math.sin(angle)
-  }
-}
-
-/**
- * Respaldo: centroide con micro-offset (no usado cuando hay mapa precomputado).
- */
-function latLngOnSectorCentroid(sector, idCaso) {
-  return singleCaseJitterLatLng(sector, idCaso)
-}
-
-/**
  * Escala secuencial azul (tipo mapas epidemiológicos / coropléticos): de azul
  * muy claro (0 casos) a índigo profundo (máximo). Separada del semáforo R/A/V.
  */
@@ -680,18 +767,6 @@ function getChoroplethColor(count, maxCount) {
   if (ratio >= 0.25) return '#3b82f6'
   if (ratio >= 0.1) return '#60a5fa'
   return '#93c5fd'
-}
-
-/* PRNG determinista (mulberry32). Misma semilla → misma salida. */
-function seededRandom(seed) {
-  let t = (seed >>> 0) || 1
-  return function rand() {
-    t |= 0
-    t = (t + 0x6d2b79f5) | 0
-    let r = Math.imul(t ^ (t >>> 15), 1 | t)
-    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 const emptyBoxStyle = {
@@ -718,108 +793,4 @@ const errorBoxStyle = {
   textAlign: 'center',
   gap: '0.75rem',
   border: '1px solid #fecaca'
-}
-
-const legendStyle = {
-  position: 'absolute',
-  bottom: '14px',
-  left: '14px',
-  zIndex: 1000,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px',
-  padding: '12px 14px',
-  background: 'rgba(255,255,255,0.97)',
-  border: '1px solid #e2e8f0',
-  borderRadius: '10px',
-  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.08)',
-  fontSize: '11.5px',
-  color: '#334155',
-  minWidth: 168,
-  backdropFilter: 'blur(8px)'
-}
-
-const legendTitle = {
-  fontSize: '10.5px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  color: '#64748b',
-  marginBottom: 6
-}
-
-const gradientBar = {
-  display: 'block',
-  width: '100%',
-  height: 8,
-  borderRadius: 4,
-  background: 'linear-gradient(90deg, #eff6ff 0%, #93c5fd 22%, #3b82f6 48%, #2563eb 72%, #172554 100%)',
-  border: '1px solid #cbd5e1'
-}
-
-const legendScaleRow = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  fontSize: 9.5,
-  color: '#94a3b8',
-  marginTop: 2
-}
-
-const legendItemRow = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  fontSize: 11.5,
-  color: '#1e293b',
-  fontWeight: 500
-}
-
-const legendDot = {
-  width: 11,
-  height: 11,
-  borderRadius: '50%',
-  border: '2px solid #ffffff',
-  boxShadow: '0 0 0 1px rgba(15,23,42,0.25)',
-  flexShrink: 0
-}
-
-const resetBtnStyle = {
-  position: 'absolute',
-  top: '14px',
-  right: '14px',
-  zIndex: 1000,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '38px',
-  height: '38px',
-  padding: 0,
-  background: '#ffffff',
-  border: '1px solid #e2e8f0',
-  borderRadius: '50%',
-  cursor: 'pointer',
-  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.1)',
-  transition: 'all 0.18s ease'
-}
-
-const footerStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '0.5rem',
-  margin: 0,
-  padding: '0.65rem 1rem',
-  fontSize: '0.78rem',
-  color: '#475569',
-  borderTop: '1px solid #e2e8f0',
-  background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'
-}
-
-const footerKpi = {
-  color: '#0f172a'
-}
-
-const footerSep = {
-  color: '#cbd5e1'
 }

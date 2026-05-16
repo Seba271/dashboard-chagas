@@ -17,11 +17,19 @@ import { useOcupaciones } from '@/src/hooks/useOcupaciones'
 import { usePrevYearCases } from '@/src/hooks/usePrevYearCases'
 import {
   exportCasesSeriesCsv,
+  exportMonthlyYoYComparisonCsv,
   exportSectorRankingCsv,
   exportEstadoBreakdownCsv
 } from '@/lib/exportDashboardData'
 import { schedulePrintChartResize } from '@/lib/printEchartsResize'
-import { ESTADO_OPTIONS, ESTADO_LABEL, ESTADO_COLOR, ESTADO_VALUES } from '@/lib/caseEnums'
+import {
+  ESTADO_OPTIONS,
+  ESTADO_LABEL,
+  ESTADO_COLOR,
+  ESTADO_VALUES,
+  AGE_GROUP_OPTIONS
+} from '@/lib/caseEnums'
+import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import SectorBarChart from '@/src/components/Charts/SectorBarChart'
@@ -63,6 +71,9 @@ function getDefaultDates() {
   }
 }
 
+/** Refresco automático del dataset de casos (solo intervalo; foco/pestaña sigue refrescando al volver). */
+const CASES_BACKGROUND_REFETCH_MS = 10 * 60 * 1000
+
 /** "hace 5 min", "hace 2 horas", "hace 3 días" o fecha exacta si es muy viejo. */
 function formatRelativeTime(iso, now = Date.now()) {
   if (!iso) return null
@@ -98,7 +109,7 @@ export default function DashboardPage() {
     }
   }, [user, profileLoading, canAccessDashboard, router])
 
-  /** Ventana solo para el gráfico "Casos en el tiempo" y la serie año anterior (no recorta KPIs/mapas con año "Todos"). */
+  /** Rango visual del temporal: con año «Todos», comparemos año calendario actual vs el anterior en 12 puntos mensuales. */
   const [dateFrom, setDateFrom] = useState(() => getDefaultDates().from)
   const [dateTo, setDateTo] = useState(() => getDefaultDates().to)
   const [globalYear, setGlobalYear] = useState('all')
@@ -110,6 +121,15 @@ export default function DashboardPage() {
 
   const { data: sectors, loading: sectorsLoading, error: sectorsError } = useSectors()
   const { data: ocupaciones, loading: ocupacionesLoading } = useOcupaciones()
+
+  const sectorScopeReady = !sectorsLoading
+  const sectorScopeIds = useMemo(() => (sectors ?? []).map((s) => s.id_sector), [sectors])
+
+  useEffect(() => {
+    if (!sectors?.length || sectorId === 'all') return
+    const ok = sectors.some((s) => String(s.id_sector) === String(sectorId))
+    if (!ok) setSectorId('all')
+  }, [sectors, sectorId])
 
   const {
     data: cases,
@@ -125,10 +145,12 @@ export default function DashboardPage() {
     estadoFilter,
     generoFilter,
     ageGroupFilter,
-    ocupacionFilter
+    ocupacionFilter,
+    sectorScopeReady,
+    sectorScopeIds
   })
 
-  /** Serie del período espejo del año anterior (para superponer en el gráfico temporal). */
+  /** Serie del período espejo del año anterior (solo cuando un año específico está el filtro; con «Todos» el YoY viene del año calendario armado en cliente). */
   const { series: prevCasesSeries } = usePrevYearCases({
     yearFilter: globalYear,
     dateFrom,
@@ -137,7 +159,11 @@ export default function DashboardPage() {
     estadoFilter,
     generoFilter,
     ageGroupFilter,
-    ocupacionFilter
+    ocupacionFilter,
+    sectorScopeReady,
+    sectorScopeIds,
+    /* Solo consulta servidor cuando hay un año fijo en el panel; modo «Todos» usa agregados mensuales por año natural desde `cases`. */
+    enabled: globalYear !== 'all'
   })
 
   /** Tick para que el "hace X min" del último update se actualice solo. */
@@ -156,7 +182,7 @@ export default function DashboardPage() {
     }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisibility)
-    const id = window.setInterval(() => refetchCases(), 60000)
+    const id = window.setInterval(() => refetchCases(), CASES_BACKGROUND_REFETCH_MS)
     return () => {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
@@ -279,11 +305,11 @@ export default function DashboardPage() {
     return Number.isFinite(diff) && diff > 24 * 60 * 60 * 1000
   }, [lastUpdatedAt, nowTick])
 
-  /** Edad mediana del dataset filtrado (entera, redondeada). */
+  /** Edad mediana al registro del dataset filtrado (deducida de fecha_nacimiento; entera). */
   const edadStats = useMemo(() => {
     const edades = (cases || [])
-      .map((c) => Number(c.edad))
-      .filter((n) => Number.isFinite(n) && n >= 0)
+      .map((c) => ageCompletedAtReference(c.fecha_nacimiento, c.fecha_registro))
+      .filter((n) => typeof n === 'number' && n >= 0)
       .sort((a, b) => a - b)
     const n = edades.length
     if (n === 0) return { mediana: null, conEdad: 0 }
@@ -306,11 +332,78 @@ export default function DashboardPage() {
       .map(([month, value]) => ({ month, value }))
   }, [cases])
 
-  /** Misma serie recortada al rango del gráfico temporal (export CSV coherente con lo que ves en el gráfico). */
+  /** Misma serie recortada al rango del gráfico temporal cuando hay un año fijo en el panel (CSV y curva día a día / semanal). */
   const casesSeriesForChart = useMemo(() => {
     if (!casesSeries.length || !dateFrom || !dateTo) return casesSeries
     return casesSeries.filter((p) => p.month >= dateFrom && p.month <= dateTo)
   }, [casesSeries, dateFrom, dateTo])
+
+  /** Año natural ancla para el modo «Todos» (se actualiza cada pocos minutos con nowTick; tras Año Nuevo la sesión larga sigue enlazando al año nuevo). */
+  const temporalCalendarYoYAnchor = useMemo(() => {
+    const d = new Date(nowTick)
+    return d.getFullYear()
+  }, [nowTick])
+
+  /**
+   * Con año «Todos»: 12 puntos mensuales (primer día ISO) año calendario ancla vs año calendario previo superpuesto al mismo mes.
+   * Con año fijo continúan las series día-a-día (o granularidad habitual) dentro de dateFrom/dateTo y prevCasesSeries desde Supabase.
+   */
+  const calendarYoYMonthly = useMemo(() => {
+    if (globalYear !== 'all') {
+      return {
+        anchor: null,
+        casesCurr: null,
+        prevShifted: null,
+        rangeFrom: '',
+        rangeTo: ''
+      }
+    }
+    const anchor = temporalCalendarYoYAnchor
+    const yPrev = anchor - 1
+
+    const monthCurr = new Map()
+    const monthPrev = new Map()
+
+    for (const c of cases || []) {
+      const raw = typeof c.fecha_registro === 'string' ? c.fecha_registro.slice(0, 10) : null
+      if (!raw || raw.length < 7) continue
+      const yy = Number.parseInt(raw.slice(0, 4), 10)
+      const ym = raw.slice(0, 7)
+      if (!Number.isFinite(yy)) continue
+      if (yy === anchor) monthCurr.set(ym, (monthCurr.get(ym) || 0) + 1)
+      if (yy === yPrev) monthPrev.set(ym, (monthPrev.get(ym) || 0) + 1)
+    }
+
+    const casesCurr = []
+    const prevShifted = []
+    for (let m = 1; m <= 12; m++) {
+      const pad = String(m).padStart(2, '0')
+      const bucket = `${anchor}-${pad}-01`
+      const ymCurr = `${anchor}-${pad}`
+      const ymPrev = `${yPrev}-${pad}`
+      casesCurr.push({ month: bucket, value: monthCurr.get(ymCurr) || 0 })
+      prevShifted.push({ month: bucket, value: monthPrev.get(ymPrev) || 0 })
+    }
+
+    return {
+      anchor,
+      casesCurr,
+      prevShifted,
+      rangeFrom: `${anchor}-01-01`,
+      rangeTo: `${anchor}-12-31`
+    }
+  }, [cases, globalYear, temporalCalendarYoYAnchor])
+
+  const tendencyCasesPrimary =
+    globalYear === 'all' ? calendarYoYMonthly.casesCurr ?? [] : casesSeriesForChart
+  const tendencyPrevSeries =
+    globalYear === 'all' ? calendarYoYMonthly.prevShifted ?? [] : prevCasesSeries
+  const tendencyRangeFrom = globalYear === 'all' ? calendarYoYMonthly.rangeFrom || '' : dateFrom
+  const tendencyRangeTo = globalYear === 'all' ? calendarYoYMonthly.rangeTo || '' : dateTo
+  const tendencyComparisonYearStr =
+    globalYear === 'all'
+      ? String(calendarYoYMonthly.anchor ?? temporalCalendarYoYAnchor)
+      : String(globalYear)
 
   /** Ranking por sector (cuenta + comuna). */
   const sectorRanking = useMemo(() => {
@@ -374,7 +467,10 @@ export default function DashboardPage() {
     }
     if (estadoFilter !== 'all') parts.push(`Estado: ${ESTADO_LABEL[estadoFilter] || estadoFilter}`)
     if (generoFilter !== 'all') parts.push(`Género: ${generoFilter}`)
-    if (ageGroupFilter !== 'all') parts.push(`Edad: ${ageGroupFilter}`)
+    if (ageGroupFilter !== 'all') {
+      const ageLbl = AGE_GROUP_OPTIONS.find((o) => o.value === ageGroupFilter)?.label ?? ageGroupFilter
+      parts.push(`Grupo etario: ${ageLbl}`)
+    }
     if (ocupacionFilter && ocupacionFilter !== 'all') {
       const o = (ocupaciones || []).find((x) => x.value === ocupacionFilter)
       parts.push(`Ocupación: ${o?.label ?? ocupacionFilter}`)
@@ -435,7 +531,9 @@ export default function DashboardPage() {
       <header className="dashboardPageHeader no-print">
         <div className="dashboardPageHeaderTitles">
           <h1>Dashboard Chagas</h1>
-          <p>Registro epidemiológico anónimo — Monte Patria</p>
+          <p>
+            Registro epidemiológico anónimo — Carén, El Palqui, Chañaral Alto y Monte Patria
+          </p>
           {lastUpdatedRelative && (
             <span
               className={`dashboardLastUpdated${lastUpdatedIsStale ? ' dashboardLastUpdated--stale' : ''}`}
@@ -600,8 +698,9 @@ export default function DashboardPage() {
                   el programa todavía debe atender.{' '}
                   <strong>Contactos directos:</strong> suma del campo{' '}
                   <em>cantidad de contactos directos</em> en los casos del filtro (solo cantidades,
-                  sin datos identificables). <strong>Edad mediana:</strong> mitad de los casos tiene
-                  edad inferior y mitad superior a este valor.
+                  sin datos identificables).{' '}
+                  <strong>Edad mediana al registro:</strong> mitad de los casos tiene edad menor y mitad mayor
+                  a esta (calculada con fecha de nacimiento respecto de la fecha de registro).
                 </span>
               </span>
             </div>
@@ -633,15 +732,15 @@ export default function DashboardPage() {
                 }
               />
               <KpiCard
-                title="Edad mediana"
+                title="Edad mediana al registro"
                 value={edadStats.mediana != null ? `${edadStats.mediana} años` : '—'}
                 icon="🧬"
                 color="#7c3aed"
                 loading={casesLoading}
                 subtitle={
                   edadStats.conEdad > 0
-                    ? `Sobre ${edadStats.conEdad.toLocaleString('es-CL')} ${edadStats.conEdad === 1 ? 'caso' : 'casos'} con edad`
-                    : 'Sin edades registradas'
+                    ? `Sobre ${edadStats.conEdad.toLocaleString('es-CL')} ${edadStats.conEdad === 1 ? 'caso' : 'casos'} con fecha de nacimiento`
+                    : 'Sin fecha de nacimiento en los casos del filtro'
                 }
               />
             </div>
@@ -651,8 +750,8 @@ export default function DashboardPage() {
         {/* 3. Demografía: pirámide poblacional */}
         <section className="dashboardSection dashboardDemographicsSection" aria-labelledby="demo-heading">
           <div className="dashboardSectionHead">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <h2 id="demo-heading" className="dashboardSectionTitle" style={{ margin: 0 }}>
+            <div className="dashboardDemoTitleRow">
+              <h2 id="demo-heading" className="dashboardSectionTitle">
                 Distribución demográfica
               </h2>
               <span className="dashboardInfoTooltip">
@@ -669,12 +768,13 @@ export default function DashboardPage() {
                   role="tooltip"
                   className="dashboardInfoTooltipBubble"
                 >
-                  Casos del filtro por grupo etario:{' '}
+                  Casos del filtro por grupo etario (intervalos de 5 años hasta 75–79 y grupo 80+):{' '}
                   <span style={{ color: '#93c5fd', fontWeight: 600 }}>Masculino</span> y{' '}
-                  <span style={{ color: '#a855f7', fontWeight: 600 }}>Otro</span> a la izquierda;{' '}
+                  <span style={{ color: '#a855f7', fontWeight: 600 }}>Otro</span> quedan a la izquierda
+                  como segmentos que se suman desde el centro;{' '}
                   <span style={{ color: '#f9a8d4', fontWeight: 600 }}>Femenino</span> y{' '}
-                  <span style={{ color: '#94a3b8', fontWeight: 600 }}>No informa</span> a la derecha.
-                  Sin edad o con género no reconocido van al pie del gráfico.
+                  <span style={{ color: '#94a3b8', fontWeight: 600 }}>No informa</span> igual a la derecha.
+                  Sin fecha de nacimiento válida o con género no reconocido van al pie del gráfico.
                 </span>
               </span>
             </div>
@@ -700,8 +800,19 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="dashboardExportBtn"
-                disabled={!casesSeriesForChart.length}
-                onClick={() => exportCasesSeriesCsv(casesSeriesForChart, `casos_temporal_${dateFrom}_${dateTo}.csv`)}
+                disabled={
+                  globalYear === 'all' ? tendencyCasesPrimary.length === 0 : !casesSeriesForChart.length
+                }
+                onClick={() =>
+                  globalYear === 'all' && calendarYoYMonthly.anchor != null
+                    ? exportMonthlyYoYComparisonCsv(
+                        tendencyCasesPrimary,
+                        tendencyPrevSeries,
+                        calendarYoYMonthly.anchor,
+                        `casos_yoy_${calendarYoYMonthly.anchor}_vs_${calendarYoYMonthly.anchor - 1}.csv`
+                      )
+                    : exportCasesSeriesCsv(casesSeriesForChart, `casos_temporal_${dateFrom}_${dateTo}.csv`)
+                }
                 aria-label="Exportar serie temporal de casos a CSV"
               >
                 CSV — Casos
@@ -730,15 +841,18 @@ export default function DashboardPage() {
           <div className="dashboardChartsGrid">
             <div className="dashboardChartColumn dashboardChartColumn--full">
               <TendencyChart
-                casesData={casesSeriesForChart}
-                prevCasesData={prevCasesSeries}
-                rangeFrom={dateFrom}
-                rangeTo={dateTo}
+                casesData={tendencyCasesPrimary}
+                prevCasesData={tendencyPrevSeries}
+                rangeFrom={tendencyRangeFrom}
+                rangeTo={tendencyRangeTo}
                 title="Casos en el tiempo"
                 type="line"
                 loading={casesLoading}
+                yearComparisonEnabled
+                comparisonFocusYear={tendencyComparisonYearStr}
+                comparisonStyle={globalYear === 'all' ? 'calendarYoY' : 'mirror'}
                 controls={
-                  <div className="chartControls chartControlsDates">
+                  <div className="chartControls chartControlsDates chartControlsDates--mutedWhenDisabled">
                     <label className="chartControlsLabel" htmlFor="dash-date-from">
                       Desde
                     </label>
@@ -780,11 +894,29 @@ export default function DashboardPage() {
                 }
                 loading={casesLoading || sectorsLoading}
                 controls={
-                  <p className="chartFilterNote">
-                    Mismos filtros del panel (sector, estado, género, edad, ocupación). Con año{' '}
-                    <strong>Todos</strong> el conteo incluye toda la historia; el gráfico temporal usa el
-                    rango Desde/Hasta de esa tarjeta.
-                  </p>
+                  <span className="dashboardInfoTooltip dashboardInfoTooltip--sectorBar">
+                    <button
+                      type="button"
+                      className="dashboardInfoTooltipBtn"
+                      aria-label="Ver cómo se aplican filtros en el gráfico de casos por sector"
+                      aria-describedby="sector-bar-info-tooltip"
+                    >
+                      i
+                    </button>
+                    <span
+                      id="sector-bar-info-tooltip"
+                      role="tooltip"
+                      className="dashboardInfoTooltipBubble"
+                    >
+                      Usa los mismos filtros globales que el panel (sector cuando no está fijado, estado,
+                      género, grupo etario por{' '}
+                      <strong>edad al registro</strong>, ocupación). Con año <strong>Todos</strong>, el
+                      ranking refleja toda la historia. El temporal <strong>Casos en el tiempo</strong> muestra
+                      mes a mes el <strong>año civil actual frente al año civil anterior</strong>; con un año concreto
+                      en el filtro, ese gráfico pasa al rango entre Desde/Hasta y la segunda serie viene del período −1 año
+                      alineado a esas mismas marcas temporales.
+                    </span>
+                  </span>
                 }
               />
             </div>
@@ -850,14 +982,13 @@ export default function DashboardPage() {
                   i
                 </button>
                 <span id="map-info-tooltip" role="tooltip" className="dashboardInfoTooltipBubble">
-                  Cada sector se oscurece según su volumen de casos. Los puntos representan casos
-                  individuales anclados al centroide del sector (con un leve corrimiento solo para
-                  separarlos visualmente) y color por estado (
-                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>rojo: nuevo</span>,{' '}
-                  <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarillo: reingreso</span>,{' '}
-                  <span style={{ color: '#86efac', fontWeight: 600 }}>verde: tratado</span>). Al
-                  hacer clic en un punto se abre el detalle del caso, incluida la cantidad de
-                  contactos directos como indicador epidemiológico. Datos anónimos y agregados.
+                  Cada sector se oscurece según el volumen de casos permitido por tu filtro. Los puntos
+                  marcan el centroide por sector (
+                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>semáforo: nuevo</span>,{' '}
+                  <span style={{ color: '#fcd34d', fontWeight: 600 }}>reingreso</span>,{' '}
+                  <span style={{ color: '#737373', fontWeight: 600 }}>tratado en gris en el mapa</span>). Al hacer
+                  clic en el área del sector o en el marcador se abre el desglose fuera del mapa (panel lateral) con cada
+                  caso y contactos directos cuando corresponda. Datos agregados y anónimos.
                 </span>
               </span>
             </div>

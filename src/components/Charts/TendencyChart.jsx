@@ -11,12 +11,17 @@
  * - rangeFrom / rangeTo: YYYY-MM-DD del período del gráfico; rellena días sin datos con 0 en el eje X.
  * - title?: string - Título del gráfico
  * - type?: 'line' | 'bar'
- * - loading?: boolean
+ * - loading?: boolean — estado de fetch del dataset principal.
+ * - controls?: ReactNode — rango Desde/Hasta del gráfico (habitualmente).
+ * - yearComparisonEnabled?: boolean — segunda serie −1 año (por defecto true).
+ * - comparisonFocusYear?: string — año del filtro del panel para leyendas (ej. «2026»).
+ * - comparisonOffHint?: string — texto cuando no se muestra comparación (ej. filtro «Todos»).
+ * - comparisonStyle?: 'mirror' | 'calendarYoY' — cómo explicar la segunda serie («Todos» ⇒ año natural Ene‑Dic vs año −1).
  */
 
 'use client'
 
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useId } from 'react'
 import { flushSync } from 'react-dom'
 import ReactECharts from 'echarts-for-react'
 import { SkeletonChart } from '@/src/components/Skeleton'
@@ -101,6 +106,74 @@ function aggregateByBucket(series, granularity, validBuckets) {
   return out
 }
 
+/** Texto contextual bajo el título (solo pantalla). */
+function buildTrendLead(
+  granularity,
+  sparseTimeline,
+  showComparison,
+  forPrint,
+  comparisonFocusYear,
+  comparisonStyle
+) {
+  if (forPrint) return ''
+  const parts = []
+  if (granularity === 'month') {
+    parts.push(
+      comparisonStyle === 'calendarYoY'
+        ? 'Totales mensuales del año civil (un punto por mes).'
+        : 'Agrupación mensual porque el período seleccionado es amplio.'
+    )
+  } else if (granularity === 'week') {
+    parts.push('Agrupación semanal — cada punto es la semana que inicia ese lunes.')
+  } else if (granularity === 'day' && sparseTimeline) {
+    parts.push('Solo se muestran días con casos porque el período tiene muchos días en cero.')
+  } else if (granularity === 'day') {
+    parts.push('Cada punto suma los casos con esa fecha de registro.')
+  }
+  if (showComparison && comparisonStyle === 'calendarYoY') {
+    const y = comparisonFocusYear && String(comparisonFocusYear).trim()
+    const yPrev = y ? Number.parseInt(y, 10) - 1 : null
+    if (yPrev != null && !Number.isNaN(yPrev) && y && yPrev > 1900) {
+      parts.push(
+        `Ventana año calendario (${y}) frente al año anterior (${yPrev}), mes a mes sobre el mismo eje.`
+      )
+    }
+  } else if (showComparison) {
+    const y = comparisonFocusYear && String(comparisonFocusYear).trim()
+    const yPrev = y ? Number.parseInt(y, 10) - 1 : null
+    if (yPrev != null && !Number.isNaN(yPrev) && y && yPrev > 1900) {
+      parts.push(
+        `Serie discontinua · año ${yPrev}: mismo mes/día en calendario que la serie ${y} (comparación año seguido).`
+      )
+    } else {
+      parts.push(
+        'Línea discontinua: período equivalente corrido −1 año respecto de lo que marca el año filtrado (Desde/Hasta).'
+      )
+    }
+  }
+  return parts.filter(Boolean).join(' ')
+}
+
+function formatBucketLabel(dateStr, granularity) {
+  const parts = dateStr.split('-')
+  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+  if (granularity === 'month' && parts.length >= 2) {
+    return `${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0].slice(2)}`
+  }
+  if (granularity === 'week' && parts.length === 3) {
+    const [, month, day] = parts
+    return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]}`
+  }
+  if (parts.length === 3) {
+    const [, month, day] = parts
+    return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]} ${parts[0].slice(2)}`
+  }
+  if (parts.length === 2) {
+    return `${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0].slice(2)}`
+  }
+  return dateStr
+}
+
 /** Buckets con valor > 0, dentro del rango, ordenados. Acepta múltiples series. */
 function bucketsWithCases(seriesMaps) {
   const seen = new Set()
@@ -113,10 +186,7 @@ function bucketsWithCases(seriesMaps) {
   return [...seen].sort()
 }
 
-const CASOS_LEYENDA_ANO_ACTUAL = 'Casos (año actual)'
-const CASOS_LEYENDA_ANO_ANTERIOR = 'Casos (año anterior)'
-const CASOS_LEYENDA_PRINT_ACTUAL = 'Año actual'
-const CASOS_LEYENDA_PRINT_ANTERIOR = 'Año anterior'
+const CASOS_LEYENDA_SERIE_UNICA = 'Casos en el período'
 
 export default function TendencyChart({
   casesData = [],
@@ -126,9 +196,17 @@ export default function TendencyChart({
   title = 'Casos en el tiempo',
   type = 'line',
   loading = false,
-  controls = null
+  controls = null,
+  yearComparisonEnabled = true,
+  comparisonFocusYear,
+  comparisonStyle = 'mirror',
+  comparisonOffHint = ''
 }) {
   const [forPrint, setForPrint] = useState(false)
+  const tendencyInfoTooltipId = useId()
+
+  const showComparisonSeries =
+    yearComparisonEnabled && Boolean(rangeFrom && rangeTo && String(rangeFrom).trim() && String(rangeTo).trim())
 
   useEffect(() => {
     const on = () => flushSync(() => setForPrint(true))
@@ -155,7 +233,7 @@ export default function TendencyChart({
     /* En modo diario seguimos usando "sparse" para no inundar el eje con ceros
        cuando el rango es largo y los datos son escasos. En semana/mes los
        buckets ya están agregados, así que mostramos todo el rango. */
-    const nonZero = bucketsWithCases([casesMap, prevMap])
+    const nonZero = bucketsWithCases(showComparisonSeries ? [casesMap, prevMap] : [casesMap])
     const sparseTimeline =
       granularity === 'day' &&
       fullBuckets.length > 45 &&
@@ -174,37 +252,41 @@ export default function TendencyChart({
       months: sortedMonths,
       cases: sortedMonths.map((b) => casesMap.get(b) || 0),
       casesPrev: sortedMonths.map((b) => prevMap.get(b) || 0),
-      hasPrev: prevCasesData && prevCasesData.length > 0,
+      /** Siempre que haya ventana válida mostramos la serie de referencia (puede ir en ceros). */
+      hasPrev: showComparisonSeries,
       sparseTimeline,
       granularity,
       xLabelInterval:
         sortedMonths.length > 45 ? Math.max(1, Math.ceil(sortedMonths.length / 14)) : 0
     }
-  }, [casesData, prevCasesData, rangeFrom, rangeTo])
+  }, [casesData, prevCasesData, rangeFrom, rangeTo, showComparisonSeries])
 
-  const formatLabel = (dateStr) => {
-    const parts = dateStr.split('-')
-    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-    if (chartData.granularity === 'month' && parts.length >= 2) {
-      return `${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0].slice(2)}`
-    }
-    if (chartData.granularity === 'week' && parts.length === 3) {
-      const [, month, day] = parts
-      return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]}`
-    }
-    if (parts.length === 3) {
-      const [, month, day] = parts
-      return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]} ${parts[0].slice(2)}`
-    }
-    if (parts.length === 2) {
-      return `${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0].slice(2)}`
-    }
-    return dateStr
-  }
+  const chartLead = buildTrendLead(
+    chartData.granularity,
+    chartData.sparseTimeline,
+    chartData.hasPrev,
+    forPrint,
+    comparisonFocusYear,
+    comparisonStyle
+  )
 
   const option = useMemo(() => {
-    const nameActual = forPrint ? CASOS_LEYENDA_PRINT_ACTUAL : CASOS_LEYENDA_ANO_ACTUAL
-    const nameAnterior = forPrint ? CASOS_LEYENDA_PRINT_ANTERIOR : CASOS_LEYENDA_ANO_ANTERIOR
+    const yStr =
+      comparisonFocusYear && String(comparisonFocusYear).trim().length ? String(comparisonFocusYear).trim() : ''
+    const yNum = Number.parseInt(yStr, 10)
+    const yPrev = Number.isFinite(yNum) ? yNum - 1 : null
+
+    const nameActual = (() => {
+      if (!chartData.hasPrev) {
+        return CASOS_LEYENDA_SERIE_UNICA
+      }
+      if (!yStr) return CASOS_LEYENDA_SERIE_UNICA
+      const suffix = comparisonStyle === 'calendarYoY' ? '(año actual)' : '(año filtrado)'
+      return `${yStr} ${suffix}`
+    })()
+
+    const nameAnterior =
+      yPrev != null && Number.isFinite(yPrev) ? `${yPrev} (año anterior)` : 'Año anterior'
     const legendItems = chartData.hasPrev ? [nameActual, nameAnterior] : [nameActual]
     const series = [
       {
@@ -225,7 +307,8 @@ export default function TendencyChart({
             ]
           }
         } : undefined,
-        emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } }
+        emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } },
+        z: chartData.hasPrev ? 3 : 2
       }
     ]
     if (chartData.hasPrev) {
@@ -234,46 +317,35 @@ export default function TendencyChart({
         type: type,
         data: chartData.casesPrev,
         smooth: type === 'line',
-        showSymbol: true,
-        symbolSize: chartData.months.length <= 24 ? 6 : 4,
-        itemStyle: { color: '#94a3b8' },
-        lineStyle: { type: 'dashed', width: 1.5, color: '#94a3b8', opacity: 0.85 },
-        emphasis: { focus: 'series', lineStyle: { width: 2 } },
+        showSymbol: chartData.months.length <= 36,
+        symbolSize: chartData.months.length <= 24 ? 5 : 3,
+        itemStyle: { color: '#b45309' },
+        lineStyle: { type: 'dashed', width: 2, color: '#c2410d', opacity: 0.9 },
+        emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
         areaStyle: undefined,
         z: 1
       })
     }
-    const hasTitleText = Boolean(title && String(title).trim())
-    let subtext = ''
-    if (!forPrint) {
-      if (chartData.granularity === 'month') {
-        subtext = 'Casos agrupados por mes (rango amplio).'
-      } else if (chartData.granularity === 'week') {
-        subtext = 'Casos agrupados por semana (semana inicia el lunes).'
-      } else if (chartData.sparseTimeline) {
-        subtext = 'Solo se muestran días con al menos un caso (el período tiene muchos días en cero).'
-      }
-    }
-    const showTitleBlock = hasTitleText || Boolean(subtext)
     return {
-      title: {
-        show: showTitleBlock,
-        text: title,
-        subtext,
-        left: 'center',
-        textStyle: {
-          color: '#1e293b',
-          fontSize: forPrint ? 13 : 15,
-          fontWeight: '600'
-        },
-        subtextStyle: { color: '#64748b', fontSize: 11, fontWeight: 'normal' }
-      },
+      title: { show: false },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: '#ffffff',
+        backgroundColor: 'rgba(255,255,255,0.98)',
         borderColor: '#e2e8f0',
         borderWidth: 1,
-        textStyle: { color: '#334155' },
+        padding: [10, 12],
+        textStyle: { color: '#334155', fontSize: 12 },
+        formatter: (items) => {
+          if (!Array.isArray(items) || !items.length) return ''
+          const head = items[0]?.axisValueLabel ?? ''
+          const lines = items.map((item) => {
+            const marker = typeof item.marker === 'string' ? item.marker.replace(/;$/, '').trim() : ''
+            const v = Number(item.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
+            const label = marker ? `${marker} ${item.seriesName ?? ''}` : String(item.seriesName ?? '')
+            return `<div style="display:flex;align-items:center;gap:8px;line-height:1.35">${label}<strong>${v}</strong></div>`
+          })
+          return `<div style="font-weight:700;margin-bottom:6px">${head}</div>${lines.join('')}`
+        },
         valueFormatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 }),
         axisPointer: {
           type: type === 'line' ? 'line' : 'shadow',
@@ -291,36 +363,43 @@ export default function TendencyChart({
             textStyle: { color: '#64748b', fontSize: 10 }
           }
         : {
+            show: legendItems.length > 0,
             data: legendItems,
-            top: subtext ? '14%' : '10%',
-            textStyle: { color: '#64748b', fontSize: 12 }
+            orient: 'horizontal',
+            left: 'center',
+            top: '2%',
+            itemGap: chartData.hasPrev ? 28 : 20,
+            itemWidth: chartData.hasPrev ? 14 : 16,
+            textStyle: { color: '#64748b', fontSize: 12, fontWeight: 500 },
+            inactiveColor: '#cbd5e1'
           },
       grid: forPrint
         ? {
             left: '4%',
             right: '4%',
             bottom: chartData.months.length > 12 ? '22%' : '18%',
-            top: showTitleBlock ? 52 : 42,
+            top: legendItems.length > 1 ? 58 : 48,
             containLabel: true
           }
         : {
             left: '3%',
-            right: '4%',
-            bottom: chartData.months.length > 12 ? '14%' : '10%',
-            top: subtext ? '22%' : '18%',
+            right: '3%',
+            bottom: chartData.months.length > 12 ? '12%' : '9%',
+            top: legendItems.length > 1 ? '17%' : '14%',
             containLabel: true
           },
       xAxis: {
         type: 'category',
-        data: chartData.months.map(formatLabel),
+        data: chartData.months.map((m) => formatBucketLabel(m, chartData.granularity)),
         axisLabel: {
           color: '#64748b',
           fontSize: forPrint ? 10 : 11,
           rotate:
-            chartData.months.length > 10 ? (forPrint ? 28 : 35) : 0,
+            chartData.months.length > 10 ? (forPrint ? 26 : 32) : 0,
           ...(chartData.xLabelInterval > 0 ? { interval: chartData.xLabelInterval } : {})
         },
-        axisLine: { lineStyle: { color: '#e2e8f0' } }
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        splitLine: { show: false }
       },
       yAxis: {
         type: 'value',
@@ -335,61 +414,67 @@ export default function TendencyChart({
       },
       series
     }
-  }, [chartData, title, type, forPrint])
+  }, [chartData, comparisonFocusYear, comparisonStyle, type, forPrint])
 
-  const cardStyle = {
-    background: '#ffffff',
-    borderRadius: '0.65rem',
-    padding: '0.9rem 1rem',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-  }
+  const leadTrimmed = typeof chartLead === 'string' ? chartLead.trim() : ''
+  const hintTrimmed = typeof comparisonOffHint === 'string' ? comparisonOffHint.trim() : ''
+  const hasScreenInfoBubble = Boolean(!forPrint && (leadTrimmed || hintTrimmed))
+
+  const chartHead = (
+    <div className="dashboardTendencyHead">
+      <div className="dashboardTendencyHeadMain">
+        <div className="dashboardTendencyTitleRow">
+          {title ? <p className="dashboardTendencyTitle">{title}</p> : null}
+          {hasScreenInfoBubble ? (
+            <span className="dashboardInfoTooltip dashboardInfoTooltip--tendency no-print">
+              <button
+                type="button"
+                className="dashboardInfoTooltipBtn"
+                aria-label="Ver cómo leer este gráfico temporal"
+                aria-describedby={tendencyInfoTooltipId}
+              >
+                i
+              </button>
+              <span id={tendencyInfoTooltipId} role="tooltip" className="dashboardInfoTooltipBubble">
+                {leadTrimmed ? (
+                  <span className="dashboardInfoTooltipBubbleBlock">{leadTrimmed}</span>
+                ) : null}
+                {hintTrimmed ? (
+                  <span className="dashboardInfoTooltipBubbleBlock">{hintTrimmed}</span>
+                ) : null}
+              </span>
+            </span>
+          ) : null}
+        </div>
+        {forPrint ? (
+          <p className="dashboardTendencyLead dashboardTendencyLead--print">
+            Casos agrupados según granularidad ({chartData.granularity}
+            ){chartData.hasPrev ? '. Incluye referencia año anterior.' : ''}
+          </p>
+        ) : null}
+      </div>
+      {controls ? (
+        <div className="dashboardTendencyHeadControls chartControlsDatesWrap no-print">{controls}</div>
+      ) : null}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div style={cardStyle} className="dashboardChartCard">
-        {controls && (
-          <div
-            className="dashboardChartControls no-print"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.5rem'
-            }}
-          >
-            {controls}
-          </div>
-        )}
-        <SkeletonChart height={440} lines={5} />
+      <div className="dashboardChartCard dashboardChartCard--tendency">
+        {chartHead}
+        <div className="dashboardTendencyBody dashboardTendencyBody--chart">
+          <SkeletonChart height={440} lines={5} />
+        </div>
       </div>
     )
   }
 
   if (chartData.months.length === 0) {
     return (
-      <div style={cardStyle} className="dashboardChartCard">
-        {controls && (
-          <div
-            className="dashboardChartControls no-print"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.5rem'
-            }}
-          >
-            {controls}
-          </div>
-        )}
-        <div style={{
-          padding: '1.5rem',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '440px',
-          color: '#64748b'
-        }}>
+      <div className="dashboardChartCard dashboardChartCard--tendency">
+        {chartHead}
+        <div className="dashboardTendencyBody dashboardTendencyEmpty">
           No hay datos de casos en el período seleccionado
         </div>
       </div>
@@ -397,26 +482,16 @@ export default function TendencyChart({
   }
 
   return (
-    <div style={cardStyle} className="dashboardChartCard">
-      {controls && (
-        <div
-          className="dashboardChartControls no-print"
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: '0.5rem'
-          }}
-        >
-          {controls}
-        </div>
-      )}
-      <ReactECharts
-        className="dashboardEchartHost dashboardEchartHost--tendency"
-        option={option}
-        style={{ height: '480px', width: '100%' }}
-        opts={{ renderer: 'svg' }}
-      />
+    <div className="dashboardChartCard dashboardChartCard--tendency">
+      {chartHead}
+      <div className="dashboardTendencyBody dashboardTendencyBody--chart">
+        <ReactECharts
+          className="dashboardEchartHost dashboardEchartHost--tendency"
+          option={option}
+          style={{ height: '480px', width: '100%' }}
+          opts={{ renderer: 'svg' }}
+        />
+      </div>
     </div>
   )
 }

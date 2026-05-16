@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
+import { filterSectorsToAllowedList } from '@/lib/sectorAllowlist'
 
 /**
- * Catálogo de sectores activos. Se usa para selects, mapa y joins en cliente.
+ * Catálogo de sectores activos permitidos en el alcance del proyecto.
+ * Solo Carén, El Palqui, Chañaral Alto y Monte Patria (`lib/sectorAllowlist`).
  *
  * data: Array<{ id_sector, nombre_sector, comuna, latitud_centroide, longitud_centroide }>
  */
@@ -25,7 +27,7 @@ export function useSectors() {
         .order('nombre_sector', { ascending: true })
 
       if (queryError) throw new Error(queryError.message || 'Error al cargar sectores')
-      setData(rows || [])
+      setData(filterSectorsToAllowedList(rows || []))
     } catch (err) {
       setError(err.message || 'Error al cargar sectores')
       setData([])

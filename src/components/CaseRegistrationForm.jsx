@@ -2,13 +2,22 @@
 
 import { useState } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
+import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
 import { ESTADO_OPTIONS, GENERO_OPTIONS } from '@/lib/caseEnums'
 import { useOcupaciones } from '@/src/hooks/useOcupaciones'
 import { sectorOptionLabel } from '@/lib/sectorDisplay'
 
+function todayIsoLocal() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const FORM_DEFAULTS = {
   genero: '',
-  edad: '',
+  fecha_nacimiento: '',
   id_sector: '',
   ocupacion: '',
   estado_actual: 'nuevo',
@@ -40,9 +49,13 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
   const validate = () => {
     if (!form.genero) return 'Selecciona el género.'
     if (!form.id_sector) return 'Selecciona el sector.'
-    if (form.edad === '' || form.edad === null) return 'Ingresa la edad.'
-    const edadNum = Number(form.edad)
-    if (Number.isNaN(edadNum) || edadNum < 0 || edadNum > 120) return 'La edad debe ser un número entre 0 y 120.'
+    const fn = form.fecha_nacimiento?.trim()
+    if (!fn) return 'Ingresa la fecha de nacimiento.'
+    const ref = todayIsoLocal()
+    if (fn > ref) return 'La fecha de nacimiento no puede ser posterior a hoy.'
+    const edadHoy = ageCompletedAtReference(fn, ref)
+    if (edadHoy === null) return 'Fecha de nacimiento inválida.'
+    if (edadHoy < 0 || edadHoy > 120) return 'La edad calculada debe estar entre 0 y 120 años.'
     const nContactos = Number(form.numero_contactos)
     if (form.numero_contactos === '' || form.numero_contactos == null) return 'Ingresa la cantidad de contactos directos (0 si no aplica).'
     if (!Number.isInteger(nContactos) || nContactos < 0 || nContactos > 9999) {
@@ -69,7 +82,7 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
 
       const payload = {
         genero: form.genero,
-        edad: Number(form.edad),
+        fecha_nacimiento: form.fecha_nacimiento.trim(),
         id_sector: Number(form.id_sector),
         ocupacion: form.ocupacion?.trim() || null,
         estado_actual: form.estado_actual,
@@ -135,14 +148,13 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
             </label>
 
             <label className="caseRegField">
-              <span className="caseRegLabel">Edad *</span>
+              <span className="caseRegLabel">Fecha de nacimiento *</span>
               <input
-                type="number"
+                type="date"
                 className="caseRegInput"
-                min={0}
-                max={120}
-                value={form.edad}
-                onChange={(e) => updateField('edad', e.target.value)}
+                max={todayIsoLocal()}
+                value={form.fecha_nacimiento}
+                onChange={(e) => updateField('fecha_nacimiento', e.target.value)}
                 required
               />
             </label>

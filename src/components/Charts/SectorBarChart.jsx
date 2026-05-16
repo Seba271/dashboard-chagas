@@ -5,7 +5,7 @@ import ReactECharts from 'echarts-for-react'
 import { SkeletonChart } from '@/src/components/Skeleton'
 
 /**
- * Barras horizontales de casos por sector (mismo look del antiguo ComunaBarChart).
+ * Barras por sector (compacto, cabecera DOM alineada con la tabla Ranking al costado).
  *
  * data: Array<{ sector: string, value: number }>
  */
@@ -15,14 +15,6 @@ export default function SectorBarChart({
   loading = false,
   controls = null
 }) {
-  const cardStyle = {
-    background: '#ffffff',
-    borderRadius: '0.65rem',
-    padding: '0.9rem 1rem',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-  }
-
   const sortedData = useMemo(() => {
     if (!data || data.length === 0) return []
     return [...data].sort((a, b) => {
@@ -32,47 +24,44 @@ export default function SectorBarChart({
     })
   }, [data])
 
-  const chartHeight = 380
+  const chartHeight = 392
 
   const option = useMemo(() => {
-    if (sortedData.length === 0) {
-      return {
-        title: {
-          text: title,
-          left: 'center',
-          textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
-        }
-      }
-    }
+    if (!sortedData.length) return null
 
     const n = sortedData.length
-    /* Etiquetas rotadas cuando hay muchos sectores para que no se solapen. */
     const rotate = n > 8 ? 35 : 0
     const labelInterval = n > 30 ? Math.max(1, Math.ceil(n / 20)) : 0
 
+    const barCategoryGap = n <= 6 ? '18%' : n <= 12 ? '24%' : '32%'
+    const barMaxWidth = n <= 6 ? 52 : n <= 12 ? 44 : 36
+
     return {
-      title: {
-        text: title,
-        left: 'center',
-        textStyle: { color: '#1e293b', fontSize: 15, fontWeight: '600' }
-      },
+      title: { show: false },
+      animationDuration: 480,
+      animationEasingUpdate: 'cubicOut',
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: '#ffffff',
+        axisPointer: {
+          type: 'shadow',
+          shadowStyle: { color: 'rgba(13,148,136,0.08)' }
+        },
+        backgroundColor: 'rgba(255,255,255,0.98)',
         borderColor: '#e2e8f0',
         borderWidth: 1,
-        textStyle: { color: '#334155' },
+        padding: [10, 12],
+        textStyle: { color: '#334155', fontSize: 12 },
         formatter: (params) => {
           const param = params[0]
-          return `${param.name}<br/>${param.seriesName}: ${Number(param.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`
+          const v = Number(param.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
+          return `${param.name}\nCasos: ${v}`
         }
       },
       grid: {
-        left: '3%',
-        right: '3%',
-        top: '14%',
-        bottom: rotate ? '20%' : '10%',
+        left: '4%',
+        right: '6%',
+        top: rotate ? '7%' : '6%',
+        bottom: rotate ? '22%' : '12%',
         containLabel: true
       },
       xAxis: {
@@ -83,83 +72,107 @@ export default function SectorBarChart({
           fontSize: 11,
           rotate,
           interval: labelInterval || 0,
-          hideOverlap: true
+          hideOverlap: true,
+          fontWeight: 500
         },
-        axisLine: { lineStyle: { color: '#e2e8f0' } },
-        axisTick: { alignWithLabel: true }
+        axisLine: { lineStyle: { color: '#ebeef4', width: 1 } },
+        axisTick: { alignWithLabel: true, length: 3, lineStyle: { color: '#cbd5e1' } }
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
+        name: 'Casos',
+        nameTextStyle: { color: '#94a3b8', fontSize: 11, fontWeight: 600 },
+        nameGap: 11,
         axisLabel: {
-          color: '#64748b',
-          fontSize: 12,
+          color: '#94a3b8',
+          fontSize: 11,
           formatter: (value) => Number(value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
         },
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+        splitLine: { lineStyle: { color: '#f1f5f9', type: [4, 4], width: 1 } }
       },
       series: [
         {
           name: 'Total casos',
           type: 'bar',
           data: sortedData.map((d) => d.value),
-          barMaxWidth: 38,
-          barCategoryGap: '32%',
+          barMaxWidth,
+          barCategoryGap,
           itemStyle: {
             color: {
               type: 'linear',
-              x: 0, y: 0, x2: 0, y2: 1,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
               colorStops: [
-                { offset: 0, color: '#14b8a6' },
+                { offset: 0, color: '#2dd4bf' },
+                { offset: 0.45, color: '#14b8a6' },
                 { offset: 1, color: '#0d9488' }
               ]
             },
-            borderRadius: [4, 4, 0, 0]
+            borderRadius: [6, 6, 0, 0],
+            shadowBlur: 12,
+            shadowColor: 'rgba(13, 148, 136, 0.12)',
+            shadowOffsetY: 4
           },
           label: {
             show: true,
             position: 'top',
             color: '#475569',
             fontSize: 11,
+            fontWeight: 600,
             formatter: (params) => Number(params.value).toLocaleString('es-CL', { maximumFractionDigits: 0 })
           },
-          emphasis: { focus: 'series', itemStyle: { color: '#0f766e' } }
+          emphasis: {
+            focus: 'series',
+            itemStyle: {
+              shadowBlur: 18,
+              shadowColor: 'rgba(13, 148, 136, 0.22)'
+            }
+          }
         }
       ]
     }
-  }, [sortedData, title])
+  }, [sortedData])
+
+  const headRow = (
+    <div className="dashboardSectorBarHead no-print">
+      <h3 className="dashboardSectorBarHead__title">{title}</h3>
+      {controls ? <div className="dashboardSectorBarHead__aside">{controls}</div> : null}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div style={cardStyle} className="dashboardChartCard">
-        {controls && <div className="dashboardChartControls no-print" style={{ marginBottom: '0.5rem' }}>{controls}</div>}
-        <SkeletonChart height={360} lines={6} />
-      </div>
-    )
-  }
-
-  if (sortedData.length === 0) {
-    return (
-      <div style={cardStyle} className="dashboardChartCard">
-        {controls && <div className="dashboardChartControls no-print" style={{ marginBottom: '0.5rem' }}>{controls}</div>}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '360px', color: '#64748b' }}>
-          No hay casos en los sectores con los filtros actuales
+      <div className="dashboardChartCard dashboardChartCard--sectorBar">
+        {headRow}
+        <div className="dashboardSectorBarBody">
+          <SkeletonChart height={360} lines={6} />
         </div>
       </div>
     )
   }
 
   return (
-    <div style={cardStyle} className="dashboardChartCard">
-      {controls && <div className="dashboardChartControls no-print" style={{ marginBottom: '0.5rem' }}>{controls}</div>}
-      <ReactECharts
-        className="dashboardEchartHost dashboardEchartHostBar"
-        option={option}
-        style={{ height: `${chartHeight}px`, width: '100%' }}
-        opts={{ renderer: 'svg' }}
-      />
+    <div className="dashboardChartCard dashboardChartCard--sectorBar">
+      {headRow}
+      <div className="dashboardSectorBarBody">
+        {!sortedData.length ? (
+          <div className="dashboardSectorBarEmpty">
+            <p className="dashboardSectorBarEmpty__text">No hay casos para graficar con los filtros actuales.</p>
+          </div>
+        ) : (
+          <ReactECharts
+            className="dashboardEchartHost dashboardEchartHostBar"
+            option={option}
+            style={{ height: `${chartHeight}px`, width: '100%' }}
+            opts={{ renderer: 'svg' }}
+          />
+        )}
+      </div>
     </div>
   )
 }
