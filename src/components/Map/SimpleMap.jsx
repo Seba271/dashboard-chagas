@@ -755,18 +755,18 @@ function escapeHtml(s) {
 }
 
 /**
- * Escala secuencial azul (tipo mapas epidemiológicos / coropléticos): de azul
- * muy claro (0 casos) a índigo profundo (máximo). Separada del semáforo R/A/V.
+ * Escala tipo mapa de calor (amarillo → naranja → rojo): poca densidad clara,
+ * máximo intenso. Separada del semáforo de estado clínico.
  */
 function getChoroplethColor(count, maxCount) {
-  if (count === 0) return '#eff6ff'
+  if (count === 0) return '#fefce8'
   const ratio = count / Math.max(1, maxCount)
-  if (ratio >= 0.85) return '#172554'
-  if (ratio >= 0.65) return '#1e40af'
-  if (ratio >= 0.45) return '#2563eb'
-  if (ratio >= 0.25) return '#3b82f6'
-  if (ratio >= 0.1) return '#60a5fa'
-  return '#93c5fd'
+  if (ratio >= 0.85) return '#991b1b'
+  if (ratio >= 0.65) return '#dc2626'
+  if (ratio >= 0.45) return '#ea580c'
+  if (ratio >= 0.25) return '#fb923c'
+  if (ratio >= 0.1) return '#eab308'
+  return '#fef08a'
 }
 
 const emptyBoxStyle = {
