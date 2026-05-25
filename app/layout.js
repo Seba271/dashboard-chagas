@@ -32,8 +32,14 @@ import './globals.css'
  * En Next.js 14, exportar 'metadata' automáticamente configura estos valores
  */
 export const metadata = {
-  title: 'Dashboard Chagas - Región de Coquimbo',
+  title: 'Dashboard casos Chagas - Región de Coquimbo',
   description: 'Sistema de visualización de indicadores epidemiológicos de la enfermedad de Chagas',
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover'
 }
 
 /**

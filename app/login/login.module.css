@@ -1,0 +1,358 @@
+/* Fondo página login: ocupar todo el ancho y centrar contenido horizontal y verticalmente */
+.page {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(1rem, 5vw, 2rem);
+  padding-left: max(clamp(1rem, 5vw, 2rem), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(1rem, 5vw, 2rem), env(safe-area-inset-right, 0px));
+  padding-bottom: max(clamp(1rem, 5vw, 2rem), env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  position: relative;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -15%, rgba(13, 148, 136, 0.14), transparent),
+    radial-gradient(ellipse 70% 50% at 100% 85%, rgba(102, 126, 234, 0.1), transparent),
+    radial-gradient(ellipse 50% 35% at 0% 80%, rgba(14, 165, 233, 0.08), transparent),
+    linear-gradient(165deg, #f0fdf9 0%, #ecfdf5 28%, #f0f9ff 72%, #f8fafc 100%);
+}
+
+.pageInner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: min(100%, 432px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Decoración soft detrás del card */
+.glowBackdrop {
+  position: absolute;
+  width: min(420px, 90vw);
+  height: min(380px, 70vh);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -52%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(45, 212, 191, 0.16) 0%,
+    rgba(129, 140, 248, 0.08) 45%,
+    transparent 68%
+  );
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 1.125rem;
+  padding: clamp(1.65rem, 5vw, 2.35rem);
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.85) inset,
+    0 24px 48px -14px rgba(15, 23, 42, 0.12),
+    0 12px 24px -10px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(14px);
+  animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.logoMark {
+  width: 3.125rem;
+  height: 3.125rem;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.875rem;
+  background: linear-gradient(145deg, #14b8a6 0%, #0d9488 42%, #0f766e 100%);
+  color: #fff;
+  box-shadow:
+    0 10px 24px rgba(13, 148, 136, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+}
+
+.logoMarkSvg {
+  display: block;
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.title {
+  font-size: clamp(1.375rem, 4.5vw, 1.75rem);
+  font-weight: 800;
+  margin: 0 0 0.35rem;
+  color: #0f172a;
+  text-align: center;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.tagline {
+  color: #64748b;
+  text-align: center;
+  margin: 0 0 0.4rem;
+  font-size: clamp(0.8125rem, 2vw, 0.895rem);
+  font-weight: 500;
+}
+
+.hint {
+  color: #94a3b8;
+  text-align: center;
+  margin: 0 0 clamp(1.35rem, 3.8vw, 1.85rem);
+  font-size: clamp(0.75rem, 2vw, 0.8075rem);
+  line-height: 1.5;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.42rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.input {
+  width: 100%;
+  padding: clamp(0.78rem, 2.5vw, 0.94rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.625rem;
+  font-size: 1rem;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  box-sizing: border-box;
+  background: #fafafa;
+}
+
+.input:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.input:focus:not(:disabled) {
+  border-color: #14b8a6;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.18);
+}
+
+.input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.fieldGroup {
+  margin-bottom: 1.15rem;
+}
+
+.errorBox {
+  margin-bottom: 1rem;
+  padding: 0.78rem 0.9rem;
+  background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fecaca;
+  border-radius: 0.625rem;
+  color: #b91c1c;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.submitBtn {
+  width: 100%;
+  padding: clamp(0.82rem, 2.5vw, 0.94rem);
+  min-height: 48px;
+  background: linear-gradient(145deg, #14b8a6 0%, #0d9488 50%, #0f766e 100%);
+  color: #fff;
+  border: none;
+  border-radius: 0.625rem;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0.015em;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+  box-shadow:
+    0 12px 24px -8px rgba(13, 148, 136, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  box-sizing: border-box;
+}
+
+.submitBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow:
+    0 16px 32px -8px rgba(13, 148, 136, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+  transform: translateY(-1px);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.submitBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* —— Splash overlay —— */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(10px) saturate(115%);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  animation: splashBackdrop 0.35s ease both;
+}
+
+@keyframes splashBackdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.splashCard {
+  width: min(100%, 360px);
+  padding: clamp(1.85rem, 5vw, 2.35rem) clamp(1.5rem, 4vw, 2rem);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow:
+    0 28px 56px -16px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+  text-align: center;
+  animation: splashCardPop 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
+
+@keyframes splashCardPop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.orbitWrap {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1.35rem;
+}
+
+.orbitOuter {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(226, 232, 240, 0.9);
+  border-top-color: #0d9488;
+  border-right-color: #14b8a6;
+  animation: orbitSpin 0.85s linear infinite;
+}
+
+.orbitGlow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, rgba(45, 212, 191, 0.25), transparent 65%);
+  animation: orbitPulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes orbitSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbitPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+.splashTitle {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: -0.015em;
+}
+
+.splashSubtitle {
+  margin: 0;
+  font-size: 0.8375rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+/* Verificación inicial: ocupa alto del .page padre y centra la tarjeta */
+.splashChecking {
+  flex: 1 1 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  animation: splashBackdrop 0.4s ease both;
+}
+
+.splashChecking .splashCard {
+  width: min(360px, 100%);
+}
+
+@media (max-width: 380px) {
+  .splashChecking .splashCard {
+    width: 100%;
+  }
+}
+

@@ -21,7 +21,7 @@ import {
   exportSectorRankingCsv,
   exportEstadoBreakdownCsv
 } from '@/lib/exportDashboardData'
-import { schedulePrintChartResize } from '@/lib/printEchartsResize'
+import { openDashboardPrintDialog, restoreDashboardAfterPrint } from '@/lib/printEchartsResize'
 import {
   ESTADO_OPTIONS,
   ESTADO_LABEL,
@@ -30,6 +30,7 @@ import {
   AGE_GROUP_OPTIONS
 } from '@/lib/caseEnums'
 import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
+import DashboardLoadingSplash from '@/src/components/DashboardLoadingSplash'
 import KpiCard from '@/src/components/KpiCard'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import SectorBarChart from '@/src/components/Charts/SectorBarChart'
@@ -94,6 +95,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { user, loading: sessionLoading, error: sessionError } = useSession()
   const { loading: profileLoading, isAdmin, profile, canAccessDashboard } = useProfile(user)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     if (!user || profileLoading) return
@@ -215,14 +217,9 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    const onBeforePrint = () => schedulePrintChartResize()
-    const onAfterPrint = () => schedulePrintChartResize()
-    window.addEventListener('beforeprint', onBeforePrint)
+    const onAfterPrint = () => restoreDashboardAfterPrint()
     window.addEventListener('afterprint', onAfterPrint)
-    return () => {
-      window.removeEventListener('beforeprint', onBeforePrint)
-      window.removeEventListener('afterprint', onAfterPrint)
-    }
+    return () => window.removeEventListener('afterprint', onAfterPrint)
   }, [])
 
   const totalCasos = cases?.length ?? 0
@@ -479,23 +476,28 @@ export default function DashboardPage() {
   }, [globalYear, sectorId, sectors, estadoFilter, generoFilter, ageGroupFilter, ocupacionFilter, ocupaciones])
 
   const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
     try {
       const supabase = createSupabaseClient()
       const { error } = await supabase.auth.signOut()
-      if (error) console.error('Error al cerrar sesión:', error)
-      else {
-        router.push('/login')
-        router.refresh()
+      if (error) {
+        console.error('Error al cerrar sesión:', error)
+        setLoggingOut(false)
+        return
       }
+      router.push('/login')
+      router.refresh()
     } catch (err) {
       console.error('Error inesperado al cerrar sesión:', err)
+      setLoggingOut(false)
     }
   }
 
   if (sessionLoading || (user && profileLoading)) {
     return (
-      <div className="dashboardStateScreen">
-        <p>Cargando dashboard...</p>
+      <div className="dashboardStateScreen dashboardStateScreen--splash">
+        <DashboardLoadingSplash />
       </div>
     )
   }
@@ -515,8 +517,19 @@ export default function DashboardPage() {
 
   if (user && !profileLoading && !canAccessDashboard) {
     return (
-      <div className="dashboardStateScreen">
-        <p>Esta cuenta no tiene acceso al panel. Cerrando sesión…</p>
+      <div className="dashboardStateScreen dashboardStateScreen--splash">
+        <DashboardLoadingSplash
+          title="Cerrando sesión"
+          subtitle="Esta cuenta no tiene acceso al panel. Te redirigimos para iniciar con otra credencial si corresponde…"
+        />
+      </div>
+    )
+  }
+
+  if (loggingOut) {
+    return (
+      <div className="dashboardStateScreen dashboardStateScreen--splash">
+        <DashboardLoadingSplash title="Cerrando sesión" subtitle="Esperá un momento, cerramos tu sesión de forma segura…" />
       </div>
     )
   }
@@ -532,7 +545,7 @@ export default function DashboardPage() {
         <div className="dashboardPageHeaderTitles">
           <h1>Dashboard Chagas</h1>
           <p>
-            Registro epidemiológico anónimo — Carén, El Palqui, Chañaral Alto y Monte Patria
+            Análisis epidemiológico — Carén, El Palqui, Chañaral Alto y Monte Patria
           </p>
           {lastUpdatedRelative && (
             <span
@@ -546,56 +559,60 @@ export default function DashboardPage() {
           )}
         </div>
         <div className="dashboardPageHeaderActions">
-          {isAdmin && (
-            <Link
-              href="/dashboard/admin"
-              className="dashboardHeaderBtn dashboardHeaderBtn--admin"
-              title="Gestionar usuarios con acceso al panel epidemiológico"
+          <div className="dashboardHeaderTools">
+            {isAdmin && (
+              <Link
+                href="/dashboard/admin"
+                className="dashboardHeaderBtn dashboardHeaderBtn--admin"
+                title="Gestionar usuarios con acceso al panel epidemiológico"
+              >
+                <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0h-.29c-.45 1.43-1.74 2.63-3.71 2.91V19h8v-2.5c0-1.52-2.33-2.7-4-3.16z"
+                    fill="currentColor"
+                  />
+                </svg>
+                Usuarios y permisos
+              </Link>
+            )}
+            <button
+              type="button"
+              className="dashboardHeaderBtn dashboardHeaderBtn--secondary"
+              onClick={() => openDashboardPrintDialog()}
+              aria-label="Imprimir resumen del dashboard"
             >
               <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
-                  d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0h-.29c-.45 1.43-1.74 2.63-3.71 2.91V19h8v-2.5c0-1.52-2.33-2.7-4-3.16z"
+                  d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"
                   fill="currentColor"
                 />
               </svg>
-              Usuarios y permisos
-            </Link>
-          )}
-          <button
-            type="button"
-            className="dashboardHeaderBtn dashboardHeaderBtn--secondary"
-            onClick={() => window.print()}
-            aria-label="Imprimir resumen del dashboard"
-          >
-            <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 14H8v-4h8v4zm2-4v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z"
-                fill="currentColor"
-              />
-            </svg>
-            Imprimir resumen
-          </button>
-          <div className="dashboardUserBlock">
-            <span>Usuario</span>
-            <strong>{user?.email || 'N/A'}</strong>
-            {!profileLoading && profile && (
-              <span className="dashboardUserRole">{isAdmin ? 'Administrador' : 'Solo lectura'}</span>
-            )}
+              Imprimir resumen
+            </button>
           </div>
-          <button
-            type="button"
-            className="dashboardHeaderBtn dashboardHeaderBtn--logout"
-            onClick={handleLogout}
-            aria-label="Cerrar sesión"
-          >
-            <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
-                fill="currentColor"
-              />
-            </svg>
-            Cerrar sesión
-          </button>
+          <div className="dashboardHeaderAccount">
+            <div className="dashboardUserBlock">
+              <span>Usuario</span>
+              <strong>{user?.email || 'N/A'}</strong>
+              {!profileLoading && profile && (
+                <span className="dashboardUserRole">{isAdmin ? 'Administrador' : 'Solo lectura'}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="dashboardHeaderBtn dashboardHeaderBtn--logout"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+            >
+              <svg className="dashboardHeaderBtnIcon" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
+                  fill="currentColor"
+                />
+              </svg>
+              Cerrar sesión
+            </button>
+          </div>
         </div>
       </header>
 

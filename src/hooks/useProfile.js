@@ -3,12 +3,15 @@
 import { useState, useEffect, useLayoutEffect } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 import { canAccessDashboard, normalizeDashboardRole } from '@/lib/dashboardRoles'
+import { peekProfileBootstrap, clearProfileBootstrap } from '@/lib/profileBootstrap'
 
 /**
  * Perfil en `public.profiles` (rol para UI: enlace admin).
  *
- * `dashboardAccess`: evita condición de carrera en el 1.er render (loading=false y profile=null
- * antes del fetch), que cerraba sesión incluso a admins.
+ * Si venís desde /login recién autorizado, `profileBootstrap` evita esperar un round-trip de
+ * `profiles` idéntico al que ya ejecutó la página de login (mismo sessionStorage + peek).
+ *
+ * Siempre confirmamos contra Supabase y limpiamos bootstrap al terminar.
  */
 export function useProfile(user) {
   const [profile, setProfile] = useState(null)
@@ -23,9 +26,17 @@ export function useProfile(user) {
       setLoading(false)
       return
     }
-    setDashboardAccess('pending')
-    setProfile(null)
-    setLoading(true)
+
+    const boot = peekProfileBootstrap(user.id)
+    if (boot && boot.role != null && canAccessDashboard(boot.role)) {
+      setProfile({ role: boot.role, email: boot.email ?? null })
+      setDashboardAccess('allowed')
+      setLoading(false)
+    } else {
+      setDashboardAccess('pending')
+      setProfile(null)
+      setLoading(true)
+    }
   }, [user?.id])
 
   useEffect(() => {
@@ -42,6 +53,8 @@ export function useProfile(user) {
         if (cancelled) return
         const prof = error ? null : data
         if (error) console.warn('useProfile:', error.message)
+
+        clearProfileBootstrap()
         setProfile(prof)
         setLoading(false)
         if (!prof || !canAccessDashboard(prof.role)) {
@@ -65,6 +78,6 @@ export function useProfile(user) {
     profile,
     loading,
     isAdmin: roleNorm === 'admin',
-    canAccessDashboard: canAccessDashboardFlag
+    canAccessDashboard: canAccessDashboardFlag,
   }
 }
