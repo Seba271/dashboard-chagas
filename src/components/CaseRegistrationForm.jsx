@@ -19,7 +19,7 @@ const FORM_DEFAULTS = {
   genero: '',
   fecha_nacimiento: '',
   id_sector: '',
-  ocupacion: '',
+  id_ocupacion: '',
   estado_actual: 'nuevo',
   numero_contactos: '0',
   observacion_general: ''
@@ -80,11 +80,13 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
       const { data: userData } = await supabase.auth.getUser()
       const userId = userData?.user?.id ?? null
 
+      const idOcupacion = form.id_ocupacion ? Number(form.id_ocupacion) : null
+
       const payload = {
         genero: form.genero,
         fecha_nacimiento: form.fecha_nacimiento.trim(),
         id_sector: Number(form.id_sector),
-        ocupacion: form.ocupacion?.trim() || null,
+        id_ocupacion: Number.isFinite(idOcupacion) ? idOcupacion : null,
         estado_actual: form.estado_actual,
         numero_contactos: Number(form.numero_contactos),
         observacion_general: form.observacion_general?.trim() || null,
@@ -194,14 +196,14 @@ export default function CaseRegistrationForm({ sectors = [], onCreated }) {
               <span className="caseRegLabel">Ocupación</span>
               <select
                 className="caseRegInput"
-                value={form.ocupacion}
-                onChange={(e) => updateField('ocupacion', e.target.value)}
+                value={form.id_ocupacion}
+                onChange={(e) => updateField('id_ocupacion', e.target.value)}
                 disabled={ocupacionesLoading}
               >
                 <option value="">Sin especificar (opcional)</option>
                 {ocupacionesOpts.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                  <option key={o.id_ocupacion} value={String(o.id_ocupacion)}>
+                    {o.nombre}
                   </option>
                 ))}
               </select>

@@ -4,17 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 
 /**
- * Catálogo fijo de ocupaciones (`public.catalogo_ocupaciones`).
- *
- * `value` = columna `codigo` (lo que debe guardarse en `casos_epidemiologicos.ocupacion`).
- * `label` = columna `nombre` (texto para filtros y formularios).
- *
- * Casos antiguos con texto libre en `ocupacion` no coinciden con estos códigos hasta
- * migrarlos; con filtro "Todos" siguen apareciendo.
- *
- * En Supabase suele hacer falta una política RLS de solo lectura para `authenticated`.
- *
- * data: Array<{ value: string, label: string }>
+ * Catálogo de ocupaciones (`public.catalogo_ocupaciones`).
+ * Usado en filtros y formularios; el valor de filtro es `id_ocupacion`.
  */
 export function useOcupaciones() {
   const [data, setData] = useState(null)
@@ -28,18 +19,21 @@ export function useOcupaciones() {
       const supabase = createSupabaseClient()
       const { data: rows, error: queryError } = await supabase
         .from('catalogo_ocupaciones')
-        .select('codigo, nombre')
+        .select('id_ocupacion, codigo, nombre')
         .eq('activo', true)
         .order('orden', { ascending: true })
 
       if (queryError) throw new Error(queryError.message || 'Error al cargar ocupaciones')
 
-      const out = (rows || []).map((r) => ({
-        value: r.codigo,
-        label: r.nombre
-      }))
-
-      setData(out)
+      setData(
+        (rows || [])
+          .filter((r) => r.id_ocupacion != null && r.id_ocupacion !== '')
+          .map((r) => ({
+            id_ocupacion: r.id_ocupacion,
+            codigo: r.codigo,
+            nombre: r.nombre
+          }))
+      )
     } catch (err) {
       setError(err.message || 'Error al cargar ocupaciones')
       setData([])

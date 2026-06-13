@@ -22,6 +22,7 @@ import {
   exportEstadoBreakdownCsv
 } from '@/lib/exportDashboardData'
 import { openDashboardPrintDialog, restoreDashboardAfterPrint } from '@/lib/printEchartsResize'
+import { enrichCaseOcupacion } from '@/lib/ocupacionDisplay'
 import {
   ESTADO_OPTIONS,
   ESTADO_LABEL,
@@ -437,14 +438,11 @@ export default function DashboardPage() {
     )
   }, [sectors])
 
-  /** Mapa: si `ocupacion` coincide con un `codigo` del catálogo, mostramos el `nombre`. */
-  const casesForMap = useMemo(() => {
-    const labelBy = new Map((ocupaciones || []).map((o) => [o.value, o.label]))
-    return (cases || []).map((c) => ({
-      ...c,
-      ocupacion_label: c.ocupacion ? labelBy.get(c.ocupacion) ?? null : null
-    }))
-  }, [cases, ocupaciones])
+  /** Mapa: etiqueta desde FK → `catalogo_ocupaciones.nombre`. */
+  const casesForMap = useMemo(
+    () => (cases || []).map((c) => enrichCaseOcupacion(c)),
+    [cases]
+  )
 
   /** % por estado sobre total filtrado. */
   const pct = useCallback(
@@ -469,8 +467,10 @@ export default function DashboardPage() {
       parts.push(`Grupo etario: ${ageLbl}`)
     }
     if (ocupacionFilter && ocupacionFilter !== 'all') {
-      const o = (ocupaciones || []).find((x) => x.value === ocupacionFilter)
-      parts.push(`Ocupación: ${o?.label ?? ocupacionFilter}`)
+      const o = (ocupaciones || []).find(
+        (x) => String(x.id_ocupacion) === String(ocupacionFilter)
+      )
+      parts.push(`Ocupación: ${o?.nombre ?? ocupacionFilter}`)
     }
     return parts.join(' · ')
   }, [globalYear, sectorId, sectors, estadoFilter, generoFilter, ageGroupFilter, ocupacionFilter, ocupaciones])

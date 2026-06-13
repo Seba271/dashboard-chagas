@@ -279,8 +279,8 @@ export default function DashboardGlobalFilters({
               >
                 <option value="all">Todas</option>
                 {ocupacionOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                  <option key={o.id_ocupacion} value={String(o.id_ocupacion)}>
+                    {o.nombre}
                   </option>
                 ))}
               </select>

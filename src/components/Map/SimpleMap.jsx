@@ -27,7 +27,7 @@ const MAP_ESTADO_COLOR = {
  *
  *  Props:
  *    sectors: Array<{ id_sector, nombre_sector, comuna, latitud_centroide, longitud_centroide }>
- *    cases:   Array<{ ..., ocupacion, ocupacion_label?, ... }>
+ *    cases:   Array<{ ..., ocupacion_nombre, ocupacion_label?, ... }>
  *    loading: boolean
  */
 function sortCasosStable(arr) {
@@ -70,7 +70,7 @@ function CaseDetailCard({ caso, estadoBorderColor }) {
   const edadTxt = edad != null ? `${edad} años` : '—'
   const fnac = formatCaseDateLabelPlain(caso.fecha_nacimiento)
   const freg = formatCaseDateLabelPlain(caso.fecha_registro)
-  const ocupRaw = caso.ocupacion_label ?? caso.ocupacion
+  const ocupRaw = caso.ocupacion_label ?? caso.ocupacion_nombre ?? 'Sin ocupación'
   const ocup = ocupRaw != null && ocupRaw !== '' ? String(ocupRaw) : '—'
   const nc = Number(caso.numero_contactos)
   const contactos = Number.isFinite(nc) ? String(nc) : '—'

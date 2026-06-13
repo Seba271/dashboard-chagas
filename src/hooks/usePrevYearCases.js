@@ -2,25 +2,14 @@
 
 /**
  * Trae la serie de casos del PERÍODO ESPEJO del año anterior, con los mismos
- * filtros que el dataset principal (sector, estado, género, grupo etario), pero con
- * `fecha_registro` desplazado un año atrás.
- *
- * Grupo etario: edad cumplida a cada `fecha_registro` vía `fecha_nacimiento` (filtro cliente).
- *
- * Para alinear visualmente con el eje X del TendencyChart, las fechas que
- * devuelve este hook ya vienen "renombradas" al año actual (ej. un caso del
- * 2024-03-15 aparece como 2025-03-15 con el conteo de ese día). Eso permite
- * superponer la serie como línea punteada del año anterior sin más cálculos.
- *
- * Solo dispara la query cuando hay un período válido según filtros **y**
- * `enabled === true`. En el dashboard se desactiva con año «Todos», porque ese
- * modo permite varios años en el mismo eje y la superposición −1 año no se lee bien.
+ * filtros que el dataset principal (sector, estado, género, grupo etario, ocupación por FK).
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 import { ageGroupRange } from '@/lib/caseEnums'
 import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
+import { applyOcupacionQueryFilter } from '@/lib/ocupacionFilter'
 
 function shiftYearStr(dateStr, delta) {
   if (!dateStr || typeof dateStr !== 'string') return ''
@@ -31,7 +20,6 @@ function shiftYearStr(dateStr, delta) {
   return `${y + delta}-${parts[1]}-${parts[2]}`
 }
 
-/** Calcula el período espejo (1 año antes) según los filtros activos. */
 function computePrevRange({ yearFilter, dateFrom, dateTo }) {
   if (yearFilter && yearFilter !== 'all') {
     const y = parseInt(yearFilter, 10)
@@ -110,16 +98,14 @@ export function usePrevYearCases({
       if (generoFilter && generoFilter !== 'all') {
         query = query.eq('genero', generoFilter)
       }
-      if (ocupacionFilter && ocupacionFilter !== 'all') {
-        query = query.eq('ocupacion', ocupacionFilter)
-      }
+
+      query = applyOcupacionQueryFilter(query, ocupacionFilter)
 
       const ageR = ageGroupRange(ageGroupFilter)
 
       const { data: rows, error: queryError } = await query
       if (queryError) throw new Error(queryError.message || 'Error al cargar casos del año anterior')
 
-      /* Agrupar por día y desplazar 1 año adelante para alinear con el eje del actual. */
       const counts = new Map()
       for (const row of rows || []) {
         if (ageR) {

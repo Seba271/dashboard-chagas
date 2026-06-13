@@ -4,40 +4,41 @@ import { useState, useEffect, useCallback } from 'react'
 import { createSupabaseClient } from '@/lib/supabase'
 import { ageGroupRange } from '@/lib/caseEnums'
 import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
+import { applyOcupacionQueryFilter } from '@/lib/ocupacionFilter'
+import { mapCasoOcupacionFromRow } from '@/lib/ocupacionMapper'
+
+const CASOS_SELECT = `
+  id_caso,
+  codigo_caso,
+  fecha_registro,
+  genero,
+  fecha_nacimiento,
+  id_sector,
+  id_ocupacion,
+  estado_actual,
+  numero_contactos,
+  observacion_general,
+  creado_en,
+  actualizado_en,
+  sectores (
+    id_sector,
+    nombre_sector,
+    comuna,
+    latitud_centroide,
+    longitud_centroide
+  ),
+  catalogo_ocupaciones!id_ocupacion (
+    id_ocupacion,
+    codigo,
+    nombre
+  )
+`
 
 /**
- * Devuelve los casos epidemiológicos filtrados (con join a sectores) en una sola consulta.
+ * Devuelve los casos epidemiológicos filtrados (join sectores + catálogo ocupaciones).
  *
- * Las agregaciones (serie temporal, conteos por sector / estado, KPIs, mapa) se derivan en
- * el componente con `useMemo`, así evitamos múltiples roundtrips por cada cambio de filtros.
- *
- * Filtros soportados:
- * - yearFilter: 'all' | 'YYYY'
- * - dateFrom / dateTo: 'YYYY-MM-DD' (solo cuando yearFilter === 'all'). Si ambos
- *   van vacíos con año "Todos", no se filtra por fecha (toda la historia).
- * - sectorId: 'all' | number
- * - estadoFilter: 'all' | 'nuevo' | 'reingreso' | 'tratado'
- * - generoFilter: 'all' | 'masculino' | 'femenino' | 'otro' (según enum)
- * - ageGroupFilter: 'all' | quinquenios (`0_4` … `75_79`) | `80_plus`
- * - ocupacionFilter: 'all' | string (`codigo` del catálogo). Igualdad exacta
- *   contra `casos_epidemiologicos.ocupacion`. Casos con texto libre antiguo
- *   no entran al filtro hasta migrar el valor al código correspondiente.
- *
- * - sectorScopeReady: si es false, no se consulta hasta tener el catálogo de sectores.
- * - sectorScopeIds: si se omite (undefined), no se restringe por sector (compatibilidad).
- *   Si es [], ningún caso coincide. Si tiene ids, solo esos `id_sector`.
- *
- * Grupo etario: edad cumplida a la fecha de registro deducida desde `fecha_nacimiento`.
- * El filtro se aplica después de obtener filas de Supabase (no hay forma exacta equivalente a
- * un solo `.gte`/`.lte` sobre `fecha_nacimiento` que respete `fecha_registro` por fila).
- *
- * Cada caso devuelto incluye:
- *   {
- *     id_caso, codigo_caso, fecha_registro, genero, fecha_nacimiento,
- *     id_sector, sector_nombre, sector_comuna, sector_lat, sector_lon,
- *     ocupacion, estado_actual, numero_contactos,
- *     observacion_general, creado_en, actualizado_en
- *   }
+ * Ocupación: solo `id_ocupacion` (FK) → `catalogo_ocupaciones.nombre`.
+ * Filtro ocupacionFilter: 'all' | string con `id_ocupacion` del catálogo.
  */
 export function useCasesDataset({
   yearFilter = 'all',
@@ -80,29 +81,7 @@ export function useCasesDataset({
 
       let query = supabase
         .from('casos_epidemiologicos')
-        .select(
-          `
-            id_caso,
-            codigo_caso,
-            fecha_registro,
-            genero,
-            fecha_nacimiento,
-            id_sector,
-            ocupacion,
-            estado_actual,
-            numero_contactos,
-            observacion_general,
-            creado_en,
-            actualizado_en,
-            sectores (
-              id_sector,
-              nombre_sector,
-              comuna,
-              latitud_centroide,
-              longitud_centroide
-            )
-          `
-        )
+        .select(CASOS_SELECT)
         .order('fecha_registro', { ascending: true })
         .limit(limit)
 
@@ -133,31 +112,32 @@ export function useCasesDataset({
         query = query.eq('genero', generoFilter)
       }
 
-      if (ocupacionFilter && ocupacionFilter !== 'all') {
-        query = query.eq('ocupacion', ocupacionFilter)
-      }
+      query = applyOcupacionQueryFilter(query, ocupacionFilter)
 
       const { data: rows, error: queryError } = await query
       if (queryError) throw new Error(queryError.message || 'Error al cargar casos')
 
-      const flat = (rows || []).map((r) => ({
-        id_caso: r.id_caso,
-        codigo_caso: r.codigo_caso,
-        fecha_registro: r.fecha_registro,
-        genero: r.genero,
-        fecha_nacimiento: r.fecha_nacimiento,
-        id_sector: r.id_sector,
-        sector_nombre: r.sectores?.nombre_sector ?? null,
-        sector_comuna: r.sectores?.comuna ?? null,
-        sector_lat: r.sectores?.latitud_centroide ?? null,
-        sector_lon: r.sectores?.longitud_centroide ?? null,
-        ocupacion: r.ocupacion,
-        estado_actual: r.estado_actual,
-        numero_contactos: Number(r.numero_contactos) || 0,
-        observacion_general: r.observacion_general,
-        creado_en: r.creado_en,
-        actualizado_en: r.actualizado_en
-      }))
+      const flat = (rows || []).map((r) => {
+        const ocup = mapCasoOcupacionFromRow(r)
+        return {
+          id_caso: r.id_caso,
+          codigo_caso: r.codigo_caso,
+          fecha_registro: r.fecha_registro,
+          genero: r.genero,
+          fecha_nacimiento: r.fecha_nacimiento,
+          id_sector: r.id_sector,
+          sector_nombre: r.sectores?.nombre_sector ?? null,
+          sector_comuna: r.sectores?.comuna ?? null,
+          sector_lat: r.sectores?.latitud_centroide ?? null,
+          sector_lon: r.sectores?.longitud_centroide ?? null,
+          ...ocup,
+          estado_actual: r.estado_actual,
+          numero_contactos: Number(r.numero_contactos) || 0,
+          observacion_general: r.observacion_general,
+          creado_en: r.creado_en,
+          actualizado_en: r.actualizado_en
+        }
+      })
 
       const range = ageGroupRange(ageGroupFilter)
       let out = flat
