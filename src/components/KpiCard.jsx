@@ -2,12 +2,17 @@
  * Tarjeta de KPI — estilos en globals.css (.dashboardKpiCard*).
  */
 
+import { config } from '@fortawesome/fontawesome-svg-core'
+import '@fortawesome/fontawesome-svg-core/styles.css'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import Skeleton from './Skeleton'
+
+config.autoAddCss = false
 
 export default function KpiCard({
   title,
   value,
-  icon = '📊',
+  icon = null,
   color = '#0d9488',
   loading = false,
   subtitle = null
@@ -24,9 +29,11 @@ export default function KpiCard({
       style={{ '--dashboard-kpi-accent': color }}
     >
       <div className="dashboardKpiCard__top">
-        <span className="dashboardKpiCard__icon" aria-hidden="true">
-          {icon}
-        </span>
+        {icon ? (
+          <span className="dashboardKpiCard__icon" aria-hidden="true">
+            <FontAwesomeIcon icon={icon} />
+          </span>
+        ) : null}
         <h3 className="dashboardKpiCard__title">{title}</h3>
       </div>
       <div className="dashboardKpiCard__value">

@@ -33,6 +33,7 @@ import {
 import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
 import DashboardLoadingSplash from '@/src/components/DashboardLoadingSplash'
 import KpiCard from '@/src/components/KpiCard'
+import { ESTADO_KPI_ICONS, KPI_ICONS } from '@/lib/kpiIcons'
 import TendencyChart from '@/src/components/Charts/TendencyChart'
 import SectorBarChart from '@/src/components/Charts/SectorBarChart'
 import SectorRankingTable from '@/src/components/Charts/SectorRankingTable'
@@ -717,7 +718,7 @@ export default function DashboardPage() {
               <KpiCard
                 title="Total casos"
                 value={totalCasos}
-                icon="🗂️"
+                icon={KPI_ICONS.totalCasos}
                 color="#0d9488"
                 loading={casesLoading}
                 subtitle={filterSummary}
@@ -725,7 +726,7 @@ export default function DashboardPage() {
               <KpiCard
                 title="Casos del mes"
                 value={casosDelMes}
-                icon="📅"
+                icon={KPI_ICONS.casosMes}
                 color="#0ea5e9"
                 loading={casesLoading}
                 subtitle="Mes calendario actual"
@@ -741,7 +742,7 @@ export default function DashboardPage() {
                   key={row.estado}
                   title={row.label}
                   value={casesLoading ? 'Cargando...' : `${row.value.toLocaleString('es-CL')} (${pct(row.value).toFixed(1)} %)`}
-                  icon={row.estado === 'nuevo' ? '✨' : row.estado === 'reingreso' ? '↩️' : '✅'}
+                  icon={ESTADO_KPI_ICONS[row.estado]}
                   color={row.color}
                   loading={casesLoading}
                 />
@@ -784,7 +785,7 @@ export default function DashboardPage() {
               <KpiCard
                 title="Casos sin tratar"
                 value={casosSinTratar}
-                icon="⚠️"
+                icon={KPI_ICONS.sinTratar}
                 color="#dc2626"
                 loading={casesLoading}
                 subtitle="Nuevos + reingresos del filtro"
@@ -798,7 +799,7 @@ export default function DashboardPage() {
                       ? contactosStats.suma.toLocaleString('es-CL')
                       : '—'
                 }
-                icon="🔗"
+                icon={KPI_ICONS.contactos}
                 color="#0d9488"
                 loading={casesLoading}
                 subtitle={
@@ -810,7 +811,7 @@ export default function DashboardPage() {
               <KpiCard
                 title="Edad mediana al registro"
                 value={edadStats.mediana != null ? `${edadStats.mediana} años` : '—'}
-                icon="🧬"
+                icon={KPI_ICONS.edadMediana}
                 color="#7c3aed"
                 loading={casesLoading}
                 subtitle={
