@@ -63,6 +63,455 @@ body {
 }
 
 /* ============================================================================
+   MAP EDITOR INTERNO
+   ============================================================================ */
+
+.map-editor-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 430px;
+  height: 100vh;
+  width: 100vw;
+  background: #0f172a;
+  color: #1e293b;
+}
+
+.map-editor-map-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.map-editor-map {
+  width: 100%;
+  height: 100%;
+  background: #e2e8f0;
+}
+
+.map-editor-map--move {
+  cursor: grab;
+}
+
+.map-editor-move-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+  pointer-events: none;
+}
+
+.map-editor-warning {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  max-width: min(760px, calc(100% - 32px));
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 251, 235, 0.94);
+  color: #92400e;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
+
+.map-editor-sidebar {
+  overflow: auto;
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 1px solid #cbd5e1;
+}
+
+.map-editor-sidebar header {
+  margin-bottom: 1rem;
+}
+
+.map-editor-eyebrow {
+  margin: 0 0 0.2rem;
+  color: #0d9488;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-editor-sidebar h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+.map-editor-status,
+.map-editor-copy-msg {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.map-editor-copy-msg {
+  color: #047857;
+  font-weight: 700;
+}
+
+.map-editor-card {
+  margin-bottom: 0.85rem;
+  padding: 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.map-editor-card h2 {
+  margin: 0 0 0.65rem;
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.map-editor-card-hint {
+  margin: -0.35rem 0 0.75rem;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.map-editor-file-input {
+  display: none;
+}
+
+.map-editor-image-name {
+  margin: 0.55rem 0 0.75rem;
+  color: #334155;
+  font-size: 0.78rem;
+}
+
+.map-editor-image-name--muted {
+  color: #94a3b8;
+}
+
+.map-editor-opacity-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.75rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.map-editor-opacity-presets button {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.map-editor-opacity-presets button.is-active,
+.map-editor-opacity-presets button:hover {
+  border-color: #0d9488;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.map-editor-actions--tight {
+  margin-top: 0;
+}
+
+.map-editor-move-block {
+  margin: 0.85rem 0;
+  padding: 0.75rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.map-editor-move-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.map-editor-move-head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 0.86rem;
+}
+
+.map-editor-move-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.map-editor-move-pad {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.map-editor-move-pad button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.map-editor-move-pad button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.map-editor-move-pad button:not(:disabled):hover {
+  border-color: #0d9488;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.map-editor-move-pad__middle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.map-editor-move-pad__center {
+  min-width: 52px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.map-editor-scale-block {
+  margin-top: 0.65rem;
+}
+
+.map-editor-scale-size {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.map-editor-scale-rows {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.map-editor-scale-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 1fr;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.map-editor-scale-row > span {
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.map-editor-scale-row button {
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 0.42rem 0.5rem;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.map-editor-scale-row button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.map-editor-scale-row button:not(:disabled):hover {
+  border-color: #0d9488;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.map-editor-card ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #475569;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.map-editor-card code {
+  color: #0f766e;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
+.map-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.map-editor-field input,
+.map-editor-field select,
+.map-editor-small-output,
+.map-editor-output {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.map-editor-field input,
+.map-editor-field select {
+  padding: 0.48rem 0.55rem;
+}
+
+.map-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.map-editor-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.map-editor-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.map-editor-sector-list {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.map-editor-sector-list span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.map-editor-sector-list i {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.25);
+}
+
+.map-editor-small-output,
+.map-editor-output {
+  padding: 0.65rem;
+  min-height: 100px;
+  resize: vertical;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.map-editor-output {
+  min-height: 360px;
+}
+
+.map-editor-output-card p {
+  margin: -0.25rem 0 0.6rem;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.map-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.map-editor-actions button {
+  border: 0;
+  border-radius: 9px;
+  padding: 0.48rem 0.62rem;
+  background: #0d9488;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.map-editor-actions button:nth-child(even) {
+  background: #334155;
+}
+
+.map-editor-actions button:hover {
+  filter: brightness(0.95);
+}
+
+@media (max-width: 960px) {
+  .map-editor-page {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .map-editor-map-panel {
+    height: 62vh;
+  }
+
+  .map-editor-sidebar {
+    border-left: 0;
+    border-top: 1px solid #cbd5e1;
+  }
+}
+
+/* ============================================================================
    ESTILOS DE ENLACES
    ============================================================================ */
 

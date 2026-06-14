@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
@@ -75,6 +75,9 @@ function getDefaultDates() {
 
 /** Refresco automático del dataset de casos (solo intervalo; foco/pestaña sigue refrescando al volver). */
 const CASES_BACKGROUND_REFETCH_MS = 10 * 60 * 1000
+
+/** El mapa territorial solo sincroniza datos cada 10 min (o al cambiar filtros). */
+const MAP_DATA_REFRESH_MS = 10 * 60 * 1000
 
 /** "hace 5 min", "hace 2 horas", "hace 3 días" o fecha exacta si es muy viejo. */
 function formatRelativeTime(iso, now = Date.now()) {
@@ -173,6 +176,59 @@ export default function DashboardPage() {
   const [nowTick, setNowTick] = useState(() => Date.now())
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 30000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const mapFilterKey = useMemo(
+    () =>
+      JSON.stringify({
+        globalYear,
+        dateFrom,
+        dateTo,
+        sectorId,
+        estadoFilter,
+        generoFilter,
+        ageGroupFilter,
+        ocupacionFilter
+      }),
+    [
+      globalYear,
+      dateFrom,
+      dateTo,
+      sectorId,
+      estadoFilter,
+      generoFilter,
+      ageGroupFilter,
+      ocupacionFilter
+    ]
+  )
+
+  const [mapCasesSnapshot, setMapCasesSnapshot] = useState(null)
+  const mapSyncRef = useRef({ filterKey: null, syncedAt: 0 })
+  const casesRef = useRef(cases)
+  casesRef.current = cases
+
+  useEffect(() => {
+    if (cases == null || casesLoading) return
+
+    const now = Date.now()
+    const filterChanged = mapSyncRef.current.filterKey !== mapFilterKey
+    const intervalDue = now - mapSyncRef.current.syncedAt >= MAP_DATA_REFRESH_MS
+    const isFirst = mapSyncRef.current.syncedAt === 0
+
+    if (isFirst || filterChanged || intervalDue) {
+      mapSyncRef.current = { filterKey: mapFilterKey, syncedAt: now }
+      setMapCasesSnapshot(cases)
+    }
+  }, [cases, casesLoading, mapFilterKey])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const latest = casesRef.current
+      if (latest == null) return
+      mapSyncRef.current.syncedAt = Date.now()
+      setMapCasesSnapshot(latest)
+    }, MAP_DATA_REFRESH_MS)
     return () => window.clearInterval(id)
   }, [])
 
@@ -440,9 +496,12 @@ export default function DashboardPage() {
 
   /** Mapa: etiqueta desde FK → `catalogo_ocupaciones.nombre`. */
   const casesForMap = useMemo(
-    () => (cases || []).map((c) => enrichCaseOcupacion(c)),
-    [cases]
+    () => (mapCasesSnapshot ?? []).map((c) => enrichCaseOcupacion(c)),
+    [mapCasesSnapshot]
   )
+
+  const mapInitialLoading =
+    (sectorsLoading && !(sectors?.length)) || (casesLoading && mapCasesSnapshot === null)
 
   /** % por estado sobre total filtrado. */
   const pct = useCallback(
@@ -1014,7 +1073,7 @@ export default function DashboardPage() {
             <SimpleMap
               sectors={mapSectors}
               cases={casesForMap}
-              loading={casesLoading || sectorsLoading}
+              loading={mapInitialLoading}
             />
           </div>
         </section>

@@ -5,6 +5,13 @@ import { ESTADO_OPTIONS, ESTADO_COLOR, GENERO_LABEL, ESTADO_LABEL } from '@/lib/
 import { ageCompletedAtReference } from '@/lib/ageFromBirthDate'
 import { sectorOptionLabel } from '@/lib/sectorDisplay'
 
+const SECTOR_GEOJSON_URL = '/geo/sectores_monte_patria_provisorio.geojson'
+
+/** Posición manual del marcador blanco cuando el centroide automático no coincide con el sector. */
+const SECTOR_MARKER_OVERRIDES = {
+  caren: { lat: -30.849466450756175, lng: -70.77064336332236 }
+}
+
 /** Semáforo en el mapa: tratado en gris para no competir con la capa territorial (azules). */
 const MAP_ESTADO_COLOR = {
   ...ESTADO_COLOR,
@@ -15,15 +22,13 @@ const MAP_ESTADO_COLOR = {
  * Mapa territorial epidemiológico.
  *
  *  Capa 1 — Polígonos por sector
- *    Voronoi sobre los centroides de los sectores, recortado a un convex-hull
- *    suavizado (área "real" de cobertura territorial). Coloreado en degradé
- *    secuencial azul epidemiológico (claro → índigo) según número de casos;
- *    estándar en mapas de carga sin semántica de riesgo y complementa el semáforo.
+ *    GeoJSON local provisorio con límites territoriales referenciales.
+ *    El archivo vive en /public/geo y queda preparado para reemplazarse
+ *    por el archivo geográfico municipal oficial cuando llegue.
  *
  *  Capa 2 — Marcadores por sector
- *    Un círculo en el centroide de cada sector. Al hacer clic (o clic en el polígono) se abre
- *    el desglose al costado fuera del mapa; cada estado se expande para listar género, edad al registro,
- *    ocupación, fechas y contactos por caso (sin datos identificables extra).
+ *    Un círculo en un punto interior del polígono (o centroide del catálogo como fallback).
+ *    Al hacer clic se abre el desglose al costado fuera del mapa.
  *
  *  Props:
  *    sectors: Array<{ id_sector, nombre_sector, comuna, latitud_centroide, longitud_centroide }>
@@ -210,9 +215,12 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
   const mapInstanceRef = useRef(null)
   const layersRef = useRef({ polygons: null, markers: [], hull: null })
   const initialViewRef = useRef({ center: [-30.85, -70.85], zoom: 10 })
+  const initialFitDoneRef = useRef(false)
   const [mounted, setMounted] = useState(false)
   const [error, setError] = useState(null)
   const [mapReady, setMapReady] = useState(false)
+  const [sectorGeoJson, setSectorGeoJson] = useState(null)
+  const [geoJsonError, setGeoJsonError] = useState(null)
   const [sectorBreakdown, setSectorBreakdown] = useState(null)
 
   useEffect(() => {
@@ -247,6 +255,32 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!mounted) return undefined
+    let cancelled = false
+
+    fetch(SECTOR_GEOJSON_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error(`No se pudo cargar ${SECTOR_GEOJSON_URL}`)
+        return res.json()
+      })
+      .then((json) => {
+        if (cancelled) return
+        setSectorGeoJson(json)
+        setGeoJsonError(null)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('SimpleMap: Error al cargar GeoJSON territorial:', err)
+        setSectorGeoJson(null)
+        setGeoJsonError(err.message || 'Error al cargar límites territoriales')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [mounted])
 
   useEffect(() => {
     if (!mounted) return
@@ -349,7 +383,8 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
 
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReady) return
-    if (loading) return
+    if (loading && !layersRef.current.polygons) return
+    if (!sectorGeoJson) return
 
     clearLayers()
 
@@ -398,140 +433,95 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
             desdeCentroid
           })
         }
-        const points = turf.featureCollection(
-          validSectors.map((s) =>
-            turf.point([s.longitud_centroide, s.latitud_centroide], { id_sector: s.id_sector })
-          )
-        )
+        const sectorsByKey = new Map()
+        validSectors.forEach((sec) => {
+          const keys = [
+            sec.id_sector,
+            sec.nombre_sector,
+            makeSectorSlug(sec.nombre_sector)
+          ].filter((v) => v != null && v !== '')
+          keys.forEach((key) => sectorsByKey.set(normalizeSectorKey(key), sec))
+        })
 
-        /* Convex hull de los centroides + buffer suave → "máscara" orgánica de la zona. */
-        let mask = null
-        try {
-          const hull = validSectors.length >= 3 ? turf.convex(points) : null
-          if (hull) {
-            mask = turf.buffer(hull, 4, { units: 'kilometers' })
-          } else {
-            mask = turf.buffer(points.features[0], 6, { units: 'kilometers' })
-          }
-        } catch (e) {
-          mask = null
-        }
-
-        /* Bbox amplio para que el Voronoi no salga truncado. */
-        const lats = validSectors.map((s) => s.latitud_centroide)
-        const lons = validSectors.map((s) => s.longitud_centroide)
-        const padLat = (Math.max(...lats) - Math.min(...lats)) * 0.6 || 0.3
-        const padLon = (Math.max(...lons) - Math.min(...lons)) * 0.6 || 0.3
-        const voronoiBbox = [
-          Math.min(...lons) - padLon,
-          Math.min(...lats) - padLat,
-          Math.max(...lons) + padLon,
-          Math.max(...lats) + padLat
-        ]
-
-        let voronoi = null
-        try {
-          voronoi = turf.voronoi(points, { bbox: voronoiBbox })
-        } catch (err) {
-          console.warn('SimpleMap: voronoi falló, se omiten polígonos:', err)
-        }
-
-        const sectorPolygons = new Map()
-        if (voronoi && voronoi.features) {
-          const clippedFeatures = []
-          voronoi.features.forEach((feat, idx) => {
-            if (!feat) return
-            const sec = validSectors[idx]
-            if (!sec) return
-            let final = feat
-            if (mask) {
-              try {
-                const inter = turf.intersect(turf.featureCollection([feat, mask]))
-                if (inter) final = inter
-              } catch (e) {
-                /* fallback al feat sin recortar */
+        const geoFeatures = (sectorGeoJson?.features || [])
+          .map((feature) => {
+            const p = feature.properties || {}
+            const sectorRow =
+              sectorsByKey.get(normalizeSectorKey(p.slug)) ||
+              sectorsByKey.get(normalizeSectorKey(p.nombre_sector)) ||
+              sectorsByKey.get(normalizeSectorKey(p.id))
+            if (!sectorRow) return null
+            const count = casesBySector.get(sectorRow.id_sector)?.length || 0
+            return {
+              ...feature,
+              properties: {
+                ...p,
+                id_sector: sectorRow.id_sector,
+                nombre_sector: sectorRow.nombre_sector || p.nombre_sector,
+                comuna: sectorRow.comuna,
+                centroid: getSectorMarkerPosition(turf, feature, p),
+                count
               }
             }
-            final.properties = {
-              id_sector: sec.id_sector,
-              nombre_sector: sec.nombre_sector,
-              comuna: sec.comuna,
-              count: casesBySector.get(sec.id_sector)?.length || 0
-            }
-            sectorPolygons.set(sec.id_sector, final)
-            clippedFeatures.push(final)
           })
+          .filter(Boolean)
 
-          const polygonLayer = L.geoJSON(turf.featureCollection(clippedFeatures), {
-            pane: 'sectorsPane',
-            style: (feature) => {
-              const count = feature.properties?.count || 0
-              return {
-                color: '#ffffff',
-                weight: 1.5,
-                fillColor: getChoroplethColor(count, maxCount),
-                fillOpacity: count === 0 ? 0.32 : 0.78
-              }
-            },
-            onEachFeature: (feature, layer) => {
-              const p = feature.properties || {}
-              const count = p.count || 0
-              const secTitulo = escapeHtml(
-                sectorOptionLabel({
-                  nombre_sector: p.nombre_sector,
-                  comuna: p.comuna,
-                  id_sector: p.id_sector
-                }) || 'Sector'
-              )
-              layer.bindTooltip(
-                `<div style="font:600 12px system-ui;color:#0f172a;line-height:1.35">
-                  ${secTitulo}
-                  <div style="font:600 12px system-ui;color:#0f172a;margin-top:2px">
-                    ${count} ${count === 1 ? 'caso' : 'casos'}
-                  </div>
-                </div>`,
-                { sticky: true, direction: 'top', opacity: 0.96 }
-              )
-              layer.on('mouseover', function () {
-                this.setStyle({ weight: 2.5, color: '#0f172a' })
-              })
-              layer.on('mouseout', function () {
-                this.setStyle({ weight: 1.5, color: '#ffffff' })
-              })
-              layer.on('click', (clickEv) => {
-                const dom = clickEv.originalEvent
-                if (dom) L.DomEvent.stopPropagation(dom)
-                const sid = p.id_sector
-                const sectorRow = validSectors.find((s) => String(s.id_sector) === String(sid))
-                if (sectorRow) openBreakdownForSector(sectorRow, { desdeCentroid: false })
-              })
+        const polygonLayer = L.geoJSON(turf.featureCollection(geoFeatures), {
+          pane: 'sectorsPane',
+          style: (feature) => {
+            const count = feature.properties?.count || 0
+            const baseColor = feature.properties?.color || getChoroplethColor(count, maxCount)
+            return {
+              color: '#ffffff',
+              weight: 1.6,
+              fillColor: count > 0 ? getChoroplethColor(count, maxCount) : baseColor,
+              fillOpacity: count === 0 ? 0.34 : 0.7
             }
-          }).addTo(map)
-          layersRef.current.polygons = polygonLayer
-        }
-
-        /* Halo gris muy sutil del contorno general (mejora la composición visual). */
-        if (mask) {
-          try {
-            const hullLayer = L.geoJSON(mask, {
-              pane: 'sectorsPane',
-              style: {
-                color: '#0f172a',
-                weight: 1.2,
-                opacity: 0.18,
-                fill: false,
-                dashArray: '2 4'
-              },
-              interactive: false
-            }).addTo(map)
-            layersRef.current.hull = hullLayer
-          } catch (e) {}
-        }
+          },
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties || {}
+            const count = p.count || 0
+            const secTitulo = escapeHtml(
+              sectorOptionLabel({
+                nombre_sector: p.nombre_sector,
+                comuna: p.comuna,
+                id_sector: p.id_sector
+              }) || p.nombre_sector || 'Sector'
+            )
+            layer.bindTooltip(
+              `<div style="font:600 12px system-ui;color:#0f172a;line-height:1.35">
+                ${secTitulo}
+                <div style="font:600 12px system-ui;color:#0f172a;margin-top:2px">
+                  ${count} ${count === 1 ? 'caso' : 'casos'}
+                </div>
+                <div style="font:500 10.5px system-ui;color:#92400e;margin-top:3px">
+                  Límite referencial
+                </div>
+              </div>`,
+              { sticky: true, direction: 'top', opacity: 0.96 }
+            )
+            layer.on('mouseover', function () {
+              this.setStyle({ weight: 2.6, color: '#0f172a', fillOpacity: 0.82 })
+            })
+            layer.on('mouseout', function () {
+              this.setStyle({ weight: 1.6, color: '#ffffff', fillOpacity: count === 0 ? 0.34 : 0.7 })
+            })
+            layer.on('click', (clickEv) => {
+              const dom = clickEv.originalEvent
+              if (dom) L.DomEvent.stopPropagation(dom)
+              const sectorRow = validSectors.find((s) => String(s.id_sector) === String(p.id_sector))
+              if (sectorRow) openBreakdownForSector(sectorRow, { desdeCentroid: false })
+            })
+          }
+        }).addTo(map)
+        layersRef.current.polygons = polygonLayer
 
         /* Un marcador por sector (centroide): clic → panel lateral (no popup Leaflet). */
         validSectors.forEach((sec) => {
-          const lat = sec.latitud_centroide
-          const lng = sec.longitud_centroide
+          const feature = geoFeatures.find((f) => String(f.properties?.id_sector) === String(sec.id_sector))
+          const centroid = feature?.properties?.centroid
+          const lat = centroid?.lat ?? sec.latitud_centroide
+          const lng = centroid?.lng ?? sec.longitud_centroide
 
           const halo = L.circleMarker([lat, lng], {
             pane: 'casesPane',
@@ -574,23 +564,29 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
           layersRef.current.markers.push(marker)
         })
 
-        /* Encuadre automático al área cubierta. Usamos padding en píxeles
-           (independiente del tamaño del bbox) y un maxZoom razonable, así
-           cuando los sectores están todos cercanos (ej. Monte Patria) la
-           vista no queda demasiado lejana. */
-        try {
-          if (validSectors.length > 0) {
-            const bounds = L.latLngBounds(validSectors.map((s) => [s.latitud_centroide, s.longitud_centroide]))
-            map.fitBounds(bounds, { animate: false, padding: [30, 30], maxZoom: 12 })
-            initialViewRef.current = {
-              center: [map.getCenter().lat, map.getCenter().lng],
-              zoom: map.getZoom()
+        /* Encuadre automático solo la primera vez; así no salta la vista al refrescar datos. */
+        if (!initialFitDoneRef.current) {
+          try {
+            const bounds = polygonLayer.getBounds?.()
+            if (bounds && bounds.isValid()) {
+              map.fitBounds(bounds, { animate: false, padding: [30, 30], maxZoom: 12 })
+              initialViewRef.current = {
+                center: [map.getCenter().lat, map.getCenter().lng],
+                zoom: map.getZoom()
+              }
+              initialFitDoneRef.current = true
+            } else if (validSectors.length > 0) {
+              const centroidBounds = L.latLngBounds(
+                validSectors.map((s) => [s.latitud_centroide, s.longitud_centroide])
+              )
+              map.fitBounds(centroidBounds, { animate: false, padding: [30, 30], maxZoom: 12 })
+              initialFitDoneRef.current = true
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       })
       .catch((err) => console.error('SimpleMap: Error al construir capas:', err))
-  }, [sectors, cases, loading, mapReady])
+  }, [sectors, cases, loading, mapReady, sectorGeoJson])
 
   if (!mounted) {
     return <div style={emptyBoxStyle}>Inicializando mapa...</div>
@@ -623,6 +619,15 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
     return <div style={emptyBoxStyle}>Cargando datos del mapa...</div>
   }
 
+  if (geoJsonError && !sectorGeoJson) {
+    return (
+      <div style={errorBoxStyle}>
+        <p style={{ fontWeight: 600 }}>Error al cargar límites territoriales</p>
+        <p style={{ fontSize: '0.875rem' }}>{geoJsonError}</p>
+      </div>
+    )
+  }
+
   const totalSectores = (sectors || []).length
   const totalCasos = (cases || []).length
 
@@ -652,7 +657,7 @@ export default function SimpleMap({ sectors = [], cases = [], loading = false })
               <div className="map-stats-overlay">
                 <div className="map-stats-overlay__card">
                   {loading ? (
-                    <span className="map-stats-loading">Actualizando datos del mapa</span>
+                    <span className="map-stats-loading">Cargando datos del mapa</span>
                   ) : totalSectores > 0 ? (
                     <>
                       <div className="map-stats-chips">
@@ -752,6 +757,68 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function normalizeSectorKey(value) {
+  if (value == null) return ''
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ñ/g, 'n')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function makeSectorSlug(value) {
+  return normalizeSectorKey(value)
+}
+
+function getSectorMarkerPosition(turf, feature, properties) {
+  const keys = [properties?.slug, properties?.id, properties?.nombre_sector]
+    .filter((v) => v != null && v !== '')
+    .map((v) => normalizeSectorKey(v))
+
+  for (const key of keys) {
+    const override = SECTOR_MARKER_OVERRIDES[key]
+    if (override && Number.isFinite(override.lat) && Number.isFinite(override.lng)) {
+      return override
+    }
+  }
+
+  return getFeatureCentroid(turf, feature)
+}
+
+function getFeatureCentroid(turf, feature) {
+  try {
+    // En polígonos cóncavos el centroide matemático puede quedar fuera (ej. Carén).
+    if (typeof turf.pointOnFeature === 'function') {
+      const inside = turf.pointOnFeature(feature)
+      const insideCoords = inside?.geometry?.coordinates
+      if (Array.isArray(insideCoords) && insideCoords.length >= 2) {
+        const [lng, lat] = insideCoords
+        if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
+      }
+    }
+
+    const center = turf.centroid(feature)
+    const coords = center?.geometry?.coordinates
+    if (!Array.isArray(coords) || coords.length < 2) return null
+    const [lng, lat] = coords
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+    if (typeof turf.booleanPointInPolygon === 'function') {
+      const insideCentroid = turf.booleanPointInPolygon(turf.point([lng, lat]), feature)
+      if (insideCentroid) return { lat, lng }
+    } else {
+      return { lat, lng }
+    }
+
+    return null
+  } catch {
+    return null
+  }
 }
 
 /**
