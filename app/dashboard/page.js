@@ -205,24 +205,30 @@ export default function DashboardPage() {
   )
 
   const [mapCasesSnapshot, setMapCasesSnapshot] = useState(null)
-  const mapSyncRef = useRef({ filterKey: null, syncedAt: 0 })
+  const mapSyncRef = useRef({ syncedAt: 0 })
+  // needsMapUpdateRef se pone true cuando cambian los filtros o en la carga inicial.
+  // Solo se aplica al snapshot cuando los casos ya terminaron de cargar (datos frescos).
+  const needsMapUpdateRef = useRef(true)
   const casesRef = useRef(cases)
   casesRef.current = cases
 
+  // Marcar que el mapa necesita actualizarse cuando cambian los filtros.
+  // NO se actualiza el snapshot aquí: los casos aún corresponden al filtro anterior.
+  useEffect(() => {
+    needsMapUpdateRef.current = true
+  }, [mapFilterKey])
+
+  // Aplicar el snapshot solo cuando los casos terminaron de cargarse Y hay un update pendiente.
+  // Así el mapa siempre muestra datos que coinciden con el filtro activo.
   useEffect(() => {
     if (cases == null || casesLoading) return
+    if (!needsMapUpdateRef.current) return
+    needsMapUpdateRef.current = false
+    mapSyncRef.current.syncedAt = Date.now()
+    setMapCasesSnapshot(cases)
+  }, [cases, casesLoading])
 
-    const now = Date.now()
-    const filterChanged = mapSyncRef.current.filterKey !== mapFilterKey
-    const intervalDue = now - mapSyncRef.current.syncedAt >= MAP_DATA_REFRESH_MS
-    const isFirst = mapSyncRef.current.syncedAt === 0
-
-    if (isFirst || filterChanged || intervalDue) {
-      mapSyncRef.current = { filterKey: mapFilterKey, syncedAt: now }
-      setMapCasesSnapshot(cases)
-    }
-  }, [cases, casesLoading, mapFilterKey])
-
+  // Refresco en segundo plano cada 10 min (independiente de cambios de filtro).
   useEffect(() => {
     const id = window.setInterval(() => {
       const latest = casesRef.current
